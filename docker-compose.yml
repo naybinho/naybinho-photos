@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: naybinho-photos-app
+    environment:
+      DB_HOST: ${DB_HOST:-192.168.1.2}
+      DB_NAME: ${DB_NAME:-photonb}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      JWT_SECRET: ${JWT_SECRET}
+      MAX_FILE_SIZE_MB: 1024
+      NODE_ENV: production
+      PORT: 9453
+      STORAGE_PATH: /app/storage
+      THUMBNAIL_HEIGHT: 400
+      THUMBNAIL_WIDTH: 400
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    image: naybinho/naybinho-photos:latest
+    network_mode: bridge
+    ports:
+      - 9453:9453
+    restart: unless-stopped
+    volumes:
+      - source: /media/HDD-Storage-1/NayBinho_Photos/storage
+        target: /app/storage
+        type: bind
+      - source: /media/HDD-Storage-1/NayBinho_Photos/models
+        target: /app/models
+        type: bind
+      - source: /media/HDD-Storage-1/NayBinho_Photos/atualizacao
+        target: /app/atualizacao
+        type: bind
+      - source: /media/HDD-Storage-1/NayBinho_Photos/logs
+        target: /app/logs
+        type: bind
+x-casaos:
+  hostname: ""
+  index: /
+  main: app
+  port_map: "9453"
+  scheme: http
+  title:
+    custom: NayBinho Photos

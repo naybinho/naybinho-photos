@@ -1,0 +1,29 @@
+# Environment & Secrets
+.env
+.env.*
+.env.local
+!.env.example
+
+# Storage directory (user uploaded files)
+storage/
+logs/
+models/
+node_modules/
+scratch/
+*.log
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Android build artifacts and local configs
+apk/.gradle/
+apk/.idea/
+apk/build/
+apk/app/build/
+apk/local.properties
+apk/*.log
+apk/replay_pid*.log
+apk/hs_err_pid*.log

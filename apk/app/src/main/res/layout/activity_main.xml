@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_main">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefreshLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg_main" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- Top Loading Bar -->
+    <ProgressBar
+        android:id="@+id/loadingProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_alignParentTop="true"
+        android:progressTint="@color/accent"
+        android:visibility="gone" />
+
+    <!-- Professional Server Offline / Maintenance Overlay -->
+    <ScrollView
+        android:id="@+id/layoutError"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:background="@color/bg_main"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxWidth="400dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/card_bg"
+                android:padding="24dp">
+
+                <!-- Glowing Warning Icon Halo -->
+                <FrameLayout
+                    android:layout_width="76dp"
+                    android:layout_height="76dp"
+                    android:background="@drawable/icon_container_bg"
+                    android:layout_marginBottom="16dp">
+
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_server_off"
+                        android:contentDescription="Servidor Offline" />
+                </FrameLayout>
+
+                <!-- Status Badge -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="● Servidor Indisponível"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#f59e0b"
+                    android:background="@drawable/badge_offline_bg"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Main Title -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Servidor Offline ou em Manutenção"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_main"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Explanation -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Não foi possível estabelecer conexão com o servidor NayBinho Photos. O sistema pode estar desligado, em manutenção ou seu dispositivo está sem conexão à rede."
+                    android:textSize="13sp"
+                    android:textColor="@color/text_muted"
+                    android:gravity="center"
+                    android:lineSpacingExtra="3dp"
+                    android:layout_marginBottom="20dp" />
+
+                <!-- Configured URL Badge -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/edittext_bg"
+                    android:padding="12dp"
+                    android:layout_marginBottom="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ENDEREÇO DO SERVIDOR"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:textColor="#64748b"
+                        android:letterSpacing="0.05"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvErrorServerUrl"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="http://192.168.1.181:9453"
+                        android:textSize="13sp"
+                        android:fontFamily="monospace"
+                        android:textColor="@color/text_main" />
+                </LinearLayout>
+
+                <!-- Action Button 1: Atualizar / Tentar Novamente -->
+                <Button
+                    android:id="@+id/btnRetry"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Atualizar e Tentar Novamente"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/btn_primary_bg"
+                    android:stateListAnimator="@null"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Action Button 2: Deslogar / Trocar Servidor -->
+                <Button
+                    android:id="@+id/btnLogout"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="Deslogar / Trocar Servidor"
+                    android:textColor="@color/accent_danger"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/btn_secondary_bg"
+                    android:stateListAnimator="@null"
+                    android:layout_marginBottom="16dp" />
+
+                <!-- Bottom Helper Note -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="💡 Dica: Certifique-se de que o computador com o servidor está ligado e conectado ao mesmo Wi-Fi."
+                    android:textSize="11sp"
+                    android:textColor="#64748b"
+                    android:gravity="center" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</RelativeLayout>

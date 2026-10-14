@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg_main">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="24dp">
+
+        <!-- App Logo & Title -->
+        <ImageView
+            android:layout_width="140dp"
+            android:layout_height="90dp"
+            android:adjustViewBounds="true"
+            android:src="@drawable/ic_app_logo"
+            android:contentDescription="@string/app_name"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_main"
+            android:letterSpacing="0.02" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/connect_subtitle"
+            android:textSize="13sp"
+            android:textColor="@color/text_muted"
+            android:gravity="center"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="28dp"
+            android:maxWidth="300dp" />
+
+        <!-- Form Card Container -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_bg"
+            android:maxWidth="420dp">
+
+            <!-- Server URL -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Endereço do Servidor"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_muted"
+                android:layout_marginBottom="6dp" />
+
+            <EditText
+                android:id="@+id/etServerUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/edittext_bg"
+                android:hint="http://192.168.1.x:9453"
+                android:textColorHint="#475569"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:layout_marginBottom="18dp" />
+
+            <!-- Username -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Usuário ou E-mail"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_muted"
+                android:layout_marginBottom="6dp" />
+
+            <EditText
+                android:id="@+id/etUsername"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/edittext_bg"
+                android:hint="Seu usuário"
+                android:textColorHint="#475569"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:inputType="text"
+                android:singleLine="true"
+                android:layout_marginBottom="18dp" />
+
+            <!-- Password -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Senha"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_muted"
+                android:layout_marginBottom="6dp" />
+
+            <EditText
+                android:id="@+id/etPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/edittext_bg"
+                android:hint="••••••••"
+                android:textColorHint="#475569"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:inputType="textPassword"
+                android:singleLine="true"
+                android:layout_marginBottom="22dp" />
+
+            <!-- Error Banner -->
+            <TextView
+                android:id="@+id/tvError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/accent_danger"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:visibility="gone"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Connect Button -->
+            <Button
+                android:id="@+id/btnConnect"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_primary_bg"
+                android:text="@string/btn_connect"
+                android:textColor="@color/white"
+                android:textStyle="bold"
+                android:textSize="15sp"
+                android:textAllCaps="false" />
+
+            <!-- Loading Spinner -->
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminateTint="@color/accent"
+                android:layout_marginTop="16dp" />
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NayBinho Photos for Android • Auto-Sync &amp; Geocoding"
+            android:textSize="11sp"
+            android:textColor="#334155"
+            android:layout_marginTop="28dp" />
+
+    </LinearLayout>
+
+</ScrollView>

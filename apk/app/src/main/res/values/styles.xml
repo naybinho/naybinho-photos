@@ -1,0 +1,16 @@
+<resources>
+    <!-- Base Application Theme -->
+    <style name="Theme.PhotoVault" parent="Theme.MaterialComponents.DayNight">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryVariant">@color/accent_hover</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="android:statusBarColor">@color/bg_main</item>
+        <item name="android:navigationBarColor">@color/bg_main</item>
+        <item name="android:windowBackground">@color/bg_main</item>
+    </style>
+
+    <style name="Theme.PhotoVault.NoActionBar" parent="Theme.PhotoVault">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+</resources>

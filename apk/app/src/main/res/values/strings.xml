@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">NayBinho Photos</string>
+    <string name="connect_title">Conectar ao Servidor</string>
+    <string name="connect_subtitle">Insira o endereço do seu servidor NayBinho Photos para sincronizar fotos, álbuns e reconhecimento facial.</string>
+    <string name="server_url_hint">URL do Servidor (ex: http://192.168.1.2:9453)</string>
+    <string name="username_hint">Usuário ou E-mail</string>
+    <string name="password_hint">Senha</string>
+    <string name="btn_connect">Conectar e Entrar</string>
+    <string name="connecting">Conectando ao servidor...</string>
+    <string name="invalid_url">Por favor, insira uma URL válida começando com http:// ou https://</string>
+    <string name="fill_all_fields">Preencha todos os campos para continuar.</string>
+    <string name="connection_failed">Não foi possível conectar ao servidor. Verifique o IP/Porta e a conexão Wi-Fi.</string>
+    <string name="auth_failed">Usuário ou senha incorretos.</string>
+</resources>
