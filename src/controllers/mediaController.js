@@ -271,9 +271,13 @@ const listMedia = asyncHandler(async (req, res) => {
     orderClause = [
       ['taken_at', sortDir],
       ['created_at', sortDir],
+      ['id', 'DESC'],
     ];
   } else {
-    orderClause = [[sortField, sortDir]];
+    orderClause = [
+      [sortField, sortDir],
+      ['id', 'DESC'],
+    ];
   }
 
   const { count, rows } = await Media.findAndCountAll({

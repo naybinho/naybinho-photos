@@ -753,6 +753,11 @@
       to { transform: scale(1); opacity: 1; }
     }
 
+    @keyframes gp-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     .gp-account-header {
       display: flex;
       align-items: center;
@@ -3506,6 +3511,44 @@
     State.photosHasMore = true;
     State.photosLoading = false;
     State.photosFilter = 'all';
+    const PHOTOS_PAGE_SIZE = 100;
+
+    let photosIntersectionObserver = null;
+    function observeInfiniteLoader(loaderEl) {
+      if (!window.IntersectionObserver || !loaderEl) return;
+      if (photosIntersectionObserver) {
+        photosIntersectionObserver.disconnect();
+      }
+      const scrollRoot = document.querySelector('.main-area') || null;
+      photosIntersectionObserver = new IntersectionObserver((entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting) {
+          loadMorePhotos();
+        }
+      }, {
+        root: scrollRoot,
+        rootMargin: '1000px',
+        threshold: 0
+      });
+      photosIntersectionObserver.observe(loaderEl);
+    }
+
+    async function loadMorePhotos() {
+      if (!State.photosHasMore || State.photosLoading) return;
+      const currentView = document.querySelector('.content-view.active');
+      if (!currentView || currentView.id !== 'view-photos') return;
+
+      const loader = document.getElementById('photosInfiniteLoader');
+      if (loader) {
+        const spinner = loader.querySelector('.spinner-small');
+        const text = loader.querySelector('.loader-text');
+        if (spinner) spinner.style.display = 'inline-block';
+        if (text) text.textContent = 'Carregando mais fotos e vídeos...';
+      }
+
+      State.photosPage = (State.photosPage || 1) + 1;
+      await loadPhotos(State.photosFilter, true);
+    }
 
     async function loadPhotos(filter = 'all', append = false) {
       if (State.photosLoading) return;
@@ -3533,10 +3576,11 @@
       });
 
       try {
-        let endpoint = `/media?limit=60&page=${State.photosPage}`;
+        let endpoint = `/media?limit=${PHOTOS_PAGE_SIZE}&page=${State.photosPage}`;
         if (filter === 'photo' || filter === 'video') endpoint += `&media_type=${filter}`;
         const res = await API.req(endpoint);
         const newItems = res.media || [];
+        const totalCount = res.total || 0;
 
         if (append) {
           State.photos = State.photos.concat(newItems);
@@ -3545,28 +3589,62 @@
         }
         State.filteredPhotos = State.photos;
 
-        if (!newItems.length || newItems.length < 60 || State.photos.length >= (res.total || 0)) {
+        if (!newItems.length || newItems.length < PHOTOS_PAGE_SIZE || State.photos.length >= totalCount) {
           State.photosHasMore = false;
         }
 
         const countType = filter === 'photo' ? 'foto(s)' : (filter === 'video' ? 'vídeo(s)' : 'item(s)');
-        document.getElementById('photosCountText').textContent = `${res.total || State.photos.length} ${countType}`;
+        const countEl = document.getElementById('photosCountText');
+        if (countEl) {
+          if (State.photos.length < totalCount) {
+            countEl.textContent = `Exibindo ${State.photos.length} de ${totalCount} ${countType}`;
+          } else {
+            countEl.textContent = `${totalCount} ${countType}`;
+          }
+        }
+
+        const mainArea = document.querySelector('.main-area');
+        const prevScroll = mainArea ? mainArea.scrollTop : 0;
 
         renderPhotoCards(grid, State.photos);
 
-        // Remove old loader if any
+        if (mainArea && append && prevScroll > 0) {
+          mainArea.scrollTop = prevScroll;
+        }
+
+        // Remove old loader / end banners
         const oldLoader = document.getElementById('photosInfiniteLoader');
         if (oldLoader) oldLoader.remove();
+        const oldEnd = document.getElementById('photosInfiniteEnd');
+        if (oldEnd) oldEnd.remove();
 
         if (State.photosHasMore) {
           const loader = document.createElement('div');
           loader.id = 'photosInfiniteLoader';
-          loader.style.cssText = 'padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.85rem; width: 100%;';
-          loader.innerHTML = '<span>Role para carregar mais memórias...</span>';
+          loader.style.cssText = 'padding: 24px 16px; text-align: center; width: 100%; cursor: pointer; user-select: none;';
+          loader.innerHTML = `
+            <div style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-color); border-radius: 99px; color: var(--text-muted); font-size: 0.85rem; transition: all 0.2s ease;">
+              <span class="spinner-small" style="display: none; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent, #4285f4); border-radius: 50%; animation: gp-spin 0.8s linear infinite;"></span>
+              <span class="loader-text">Role para carregar mais ou clique aqui (${State.photos.length} de ${totalCount || '...'})</span>
+            </div>
+          `;
+          loader.onclick = () => loadMorePhotos();
           grid.appendChild(loader);
+
+          observeInfiniteLoader(loader);
+        } else if (State.photos.length > 0) {
+          const endDiv = document.createElement('div');
+          endDiv.id = 'photosInfiniteEnd';
+          endDiv.style.cssText = 'padding: 32px 16px 60px; text-align: center; color: var(--text-muted); font-size: 0.85rem; width: 100%;';
+          endDiv.innerHTML = `<span>✨ Todas as fotos e vídeos foram carregados (${State.photos.length} itens)</span>`;
+          grid.appendChild(endDiv);
         }
       } catch (err) {
-        if (!append) renderViewError(grid, err, () => loadPhotos(filter));
+        if (append) {
+          State.photosPage = Math.max(1, State.photosPage - 1);
+        } else {
+          renderViewError(grid, err, () => loadPhotos(filter));
+        }
       } finally {
         State.photosLoading = false;
       }
@@ -3582,20 +3660,31 @@
         const currentView = document.querySelector('.content-view.active');
         if (!currentView || currentView.id !== 'view-photos') return;
 
-        const mainEl = document.querySelector('.main-content');
-        const scrollHeight = mainEl ? mainEl.scrollHeight : document.documentElement.scrollHeight;
-        const scrollTop = mainEl ? mainEl.scrollTop : (window.scrollY || window.pageYOffset);
-        const clientHeight = mainEl ? mainEl.clientHeight : window.innerHeight;
+        const mainEl = document.querySelector('.main-area');
+        if (mainEl) {
+          const scrollHeight = mainEl.scrollHeight;
+          const scrollTop = mainEl.scrollTop;
+          const clientHeight = mainEl.clientHeight;
+          if (scrollHeight - scrollTop - clientHeight < 1000) {
+            loadMorePhotos();
+            return;
+          }
+        }
 
-        if (scrollHeight - scrollTop - clientHeight < 600) {
-          State.photosPage++;
-          loadPhotos(State.photosFilter, true);
+        const winScrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+        const winScrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+        const winClientHeight = window.innerHeight;
+        if (winScrollHeight - winScrollTop - winClientHeight < 1000) {
+          loadMorePhotos();
         }
       };
 
-      const mainEl = document.querySelector('.main-content');
-      if (mainEl) mainEl.addEventListener('scroll', checkScroll, { passive: true });
+      const mainEl = document.querySelector('.main-area');
+      if (mainEl) {
+        mainEl.addEventListener('scroll', checkScroll, { passive: true });
+      }
       window.addEventListener('scroll', checkScroll, { passive: true });
+      document.addEventListener('scroll', checkScroll, { passive: true });
     }
 
     /* Google Photos Style Date-Grouped Grid */
