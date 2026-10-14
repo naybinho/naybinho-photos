@@ -4131,6 +4131,9 @@
 
       modal.classList.add('active');
       lucide.createIcons();
+      try {
+        history.pushState({ pv_lightbox: true }, '');
+      } catch (e) {}
     }
 
     async function setPhotoCurrentLocation() {
@@ -4172,8 +4175,9 @@
     }
 
     function closeLightbox() {
-      document.getElementById('lightboxModal').classList.remove('active');
-      document.getElementById('lightboxMediaContainer').innerHTML = '';
+      document.getElementById('lightboxModal')?.classList.remove('active');
+      const container = document.getElementById('lightboxMediaContainer');
+      if (container) container.innerHTML = '';
       closeViewerInfoSheet();
     }
 
@@ -4185,6 +4189,60 @@
     function closeViewerInfoSheet() {
       document.getElementById('viewerInfoSheetBackdrop')?.classList.remove('active');
     }
+
+    /* Global App Back Handler (for Android Native Back & Navigation) */
+    window.handleAppBack = function() {
+      // 1. Viewer Info Sheet
+      const infoSheet = document.getElementById('viewerInfoSheetBackdrop');
+      if (infoSheet && infoSheet.classList.contains('active')) {
+        closeViewerInfoSheet();
+        return true;
+      }
+
+      // 2. Lightbox Modal (Full photo/video view)
+      const lbModal = document.getElementById('lightboxModal');
+      if (lbModal && lbModal.classList.contains('active')) {
+        closeLightbox();
+        return true;
+      }
+
+      // 3. Account Bottom Sheet
+      const accSheet = document.getElementById('accountSheetBackdrop');
+      if (accSheet && accSheet.classList.contains('active')) {
+        accSheet.classList.remove('active');
+        return true;
+      }
+
+      // 4. Any other modal with .modal.active
+      const activeModal = document.querySelector('.modal.active');
+      if (activeModal) {
+        activeModal.classList.remove('active');
+        return true;
+      }
+
+      // 5. Album Detail View
+      const albumDetail = document.getElementById('albumDetailContainer');
+      if (albumDetail && albumDetail.style.display !== 'none') {
+        closeAlbumDetail();
+        return true;
+      }
+
+      // 6. Return to main photos view if currently in another section
+      if (State && State.currentView && State.currentView !== 'photos') {
+        switchView('photos');
+        return true;
+      }
+
+      // Root gallery level reached
+      return false;
+    };
+
+    window.addEventListener('popstate', (e) => {
+      const lbModal = document.getElementById('lightboxModal');
+      if (lbModal && lbModal.classList.contains('active')) {
+        closeLightbox();
+      }
+    });
 
     /* Sharing Logic (Android Action Send to WhatsApp, Instagram, Telegram, etc., or Web Share API) */
     async function shareCurrentPhoto() {

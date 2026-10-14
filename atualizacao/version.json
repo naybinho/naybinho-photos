@@ -1,8 +1,8 @@
 {
   "versionCode": 10,
   "versionName": "1.0.9",
-  "notes": "Otimização massiva de desempenho: miniaturas em WebP cacheadas, rolagem infinita instantânea e remoção de processamento facial em segundo plano.",
+  "notes": "Otimizações de performance, retorno automático da foto para a galeria e saída do app com 3 toques no botão voltar.",
   "filename": "NayBinho-Photos.apk",
-  "fileSize": 6881998,
-  "updatedAt": "2026-10-14T23:10:00.000Z"
+  "fileSize": 6882834,
+  "updatedAt": "2026-10-14T23:30:00.000Z"
 }

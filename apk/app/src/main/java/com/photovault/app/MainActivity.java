@@ -23,6 +23,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
@@ -52,10 +53,21 @@ public class MainActivity extends AppCompatActivity {
 
     private ValueCallback<Uri[]> filePathCallback;
 
+    private int backPressCount = 0;
+    private long lastBackPressTime = 0;
+    private static final long BACK_PRESS_INTERVAL = 2500;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackAction();
+            }
+        });
 
         prefs = getSharedPreferences("photovault_prefs", Context.MODE_PRIVATE);
 
@@ -412,14 +424,50 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        handleBackAction();
+    }
+
+    private void handleBackAction() {
         if (layoutError != null && layoutError.getVisibility() == View.VISIBLE) {
-            super.onBackPressed();
+            finish();
             return;
         }
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
+
+        if (webView != null) {
+            webView.evaluateJavascript(
+                "(function() { return (typeof window.handleAppBack === 'function') ? window.handleAppBack() : false; })()",
+                value -> {
+                    boolean handledByWeb = "true".equalsIgnoreCase(value);
+                    if (handledByWeb) {
+                        backPressCount = 0;
+                        return;
+                    }
+
+                    if (webView.canGoBack()) {
+                        backPressCount = 0;
+                        webView.goBack();
+                        return;
+                    }
+
+                    long currentTime = System.currentTimeMillis();
+                    if (currentTime - lastBackPressTime > BACK_PRESS_INTERVAL) {
+                        backPressCount = 1;
+                        lastBackPressTime = currentTime;
+                        Toast.makeText(MainActivity.this, "Pressione voltar mais 2 vezes para sair", Toast.LENGTH_SHORT).show();
+                    } else {
+                        backPressCount++;
+                        lastBackPressTime = currentTime;
+                        if (backPressCount == 2) {
+                            Toast.makeText(MainActivity.this, "Pressione voltar mais 1 vez para sair", Toast.LENGTH_SHORT).show();
+                        } else if (backPressCount >= 3) {
+                            backPressCount = 0;
+                            finishAffinity();
+                        }
+                    }
+                }
+            );
         } else {
-            super.onBackPressed();
+            finish();
         }
     }
 }
