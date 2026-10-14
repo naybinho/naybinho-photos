@@ -4,8 +4,8 @@ const { Op, Sequelize } = require('sequelize');
 const { Media, Gallery, Location, Album } = require('../models');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { AppError } = require('../middleware/errorHandler');
-const { deleteFileSafe, getMediaAbsPath, getThumbnailAbsPath } = require('../utils/storage');
-const { generateImageThumbnail, generateVideoThumbnail, getImageDimensions, getVideoMetadata } = require('../utils/thumbnail');
+const { deleteFileSafe, getMediaAbsPath, getThumbnailAbsPath, getThumbnailJpgAbsPath, deleteThumbnailSafe } = require('../utils/storage');
+const { generateMediaThumbnail, getImageDimensions, getVideoMetadata } = require('../utils/thumbnail');
 const { extractExif } = require('../utils/exif');
 const { ALLOWED_IMAGE_TYPES } = require('../middleware/upload');
 const logger = require('../utils/logger');
@@ -91,9 +91,6 @@ const uploadMedia = asyncHandler(async (req, res) => {
         dimensions = await getVideoMetadata(absPath);
       }
 
-      // Single file policy: use the same single original file for all services (no duplicate thumbnail files on disk)
-      const thumbRelative = path.join(req.user.storage_folder, storedFilename);
-
       // Determine GPS coordinates (from multipart body or parsed EXIF)
       const rawLat = (req.body.latitude !== undefined && req.body.latitude !== null && req.body.latitude !== '')
         ? parseFloat(req.body.latitude)
@@ -154,6 +151,8 @@ const uploadMedia = asyncHandler(async (req, res) => {
         }
       }
 
+      const photoDate = exifData.taken_at || extractDateFromFilenameOrStat(file.originalname, absPath) || new Date();
+
       const media = await Media.create({
         user_id: req.user.id,
         gallery_id: gallery_id || null,
@@ -161,14 +160,14 @@ const uploadMedia = asyncHandler(async (req, res) => {
         original_filename: file.originalname,
         stored_filename: storedFilename,
         file_path: path.join(req.user.storage_folder, storedFilename),
-        thumbnail_path: thumbRelative,
+        thumbnail_path: path.join('.thumbnails', `${storedFilename}.webp`),
         mime_type: file.mimetype,
         media_type: mediaType,
         file_size_bytes: file.size,
         width: dimensions.width || null,
         height: dimensions.height || null,
         duration_seconds: dimensions.duration_seconds || null,
-        taken_at: exifData.taken_at || extractDateFromFilenameOrStat(file.originalname, absPath),
+        taken_at: photoDate,
         camera_make: exifData.camera_make || null,
         camera_model: exifData.camera_model || null,
         latitude: targetLat,
@@ -187,24 +186,17 @@ const uploadMedia = asyncHandler(async (req, res) => {
         await AlbumMedia.create({ album_id, media_id: media.id }).catch(() => {});
       }
 
+      // Pre-generate high-performance WebP thumbnail on disk
+      generateMediaThumbnail(media.id, absPath, mediaType).catch((err) => {
+        logger.warn(`Background thumbnail generation for ${media.id} failed: ${err.message}`);
+      });
+
       results.push(media);
     } catch (err) {
       errors.push({ filename: file.originalname, error: err.message });
       // Clean up uploaded file on error
       await deleteFileSafe(file.path).catch(() => {});
     }
-  }
-
-  // Trigger automatic face recognition in background for newly uploaded photos
-  if (results.some(m => m.media_type === 'photo')) {
-    setImmediate(async () => {
-      const { processMediaFaces } = require('../services/faceService');
-      for (const media of results) {
-        if (media.media_type === 'photo') {
-          await processMediaFaces(media, req.user);
-        }
-      }
-    });
   }
 
   res.status(201).json({
@@ -271,13 +263,13 @@ const listMedia = asyncHandler(async (req, res) => {
   }
 
   const isAll = limit === 'all' || limit === '0' || limit === 0 || limit === -1 || limit === 'unlimited';
-  const parsedLimit = isAll ? null : (parseInt(limit) || 1000);
+  const parsedLimit = isAll ? null : (parseInt(limit) || 60);
   const parsedPage = parseInt(page) || 1;
 
   let orderClause;
   if (sortField === 'taken_at') {
     orderClause = [
-      [Sequelize.literal('COALESCE("Media"."taken_at", "Media"."created_at")'), sortDir],
+      ['taken_at', sortDir],
       ['created_at', sortDir],
     ];
   } else {
@@ -286,6 +278,7 @@ const listMedia = asyncHandler(async (req, res) => {
 
   const { count, rows } = await Media.findAndCountAll({
     where,
+    attributes: { exclude: ['exif_data'] },
     include,
     limit: parsedLimit || undefined,
     offset: parsedLimit ? (parsedPage - 1) * parsedLimit : undefined,
@@ -373,7 +366,7 @@ const downloadMedia = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET /api/media/:id/thumbnail - Serve thumbnail directly from the single file (in-memory resize, no duplicate disk files)
+ * GET /api/media/:id/thumbnail - Serve pre-cached disk thumbnail with WebP & ETag
  */
 const serveThumbnail = asyncHandler(async (req, res) => {
   const media = await Media.findOne({ where: { id: req.params.id, user_id: req.user.id } });
@@ -382,50 +375,51 @@ const serveThumbnail = asyncHandler(async (req, res) => {
   const absPath = getMediaAbsPath(req.user.storage_folder, media.stored_filename);
   if (!fs.existsSync(absPath)) throw new AppError('File not found on disk', 404);
 
-  res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+  // 1. Check if pre-cached thumbnail file already exists on disk
+  const webpThumb = getThumbnailAbsPath(media.id);
+  const jpgThumb = getThumbnailJpgAbsPath(media.id);
 
-  if (media.media_type === 'photo') {
-    try {
-      res.setHeader('Content-Type', 'image/jpeg');
-      const sharp = require('sharp');
-      const stream = sharp(absPath, { failOnError: false, failOn: 'none' })
-        .rotate()
-        .resize(400, 400, { fit: 'cover' })
-        .jpeg({ quality: 80 });
-      stream.on('error', (err) => {
-        if (!res.headersSent) {
-          res.setHeader('Content-Type', media.mime_type || 'image/jpeg');
-        }
-        fs.createReadStream(absPath).pipe(res);
-      });
-      return stream.pipe(res);
-    } catch {
-      res.setHeader('Content-Type', media.mime_type);
-      return fs.createReadStream(absPath).pipe(res);
+  let targetThumb = null;
+  let mimeType = 'image/webp';
+
+  if (fs.existsSync(webpThumb) && fs.statSync(webpThumb).size > 0) {
+    targetThumb = webpThumb;
+    mimeType = 'image/webp';
+  } else if (fs.existsSync(jpgThumb) && fs.statSync(jpgThumb).size > 0) {
+    targetThumb = jpgThumb;
+    mimeType = 'image/jpeg';
+  }
+
+  // 2. If not generated yet (e.g. existing/legacy media), generate and save to disk now
+  if (!targetThumb) {
+    targetThumb = await generateMediaThumbnail(media.id, absPath, media.media_type);
+    if (targetThumb && fs.existsSync(targetThumb)) {
+      mimeType = targetThumb.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
     }
   }
 
+  // 3. Serve the cached file from disk with aggressive caching & ETag support
+  if (targetThumb && fs.existsSync(targetThumb)) {
+    const stat = fs.statSync(targetThumb);
+    const etag = `W/"${stat.size}-${stat.mtimeMs}"`;
+
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'ETag': etag,
+    });
+    return fs.createReadStream(targetThumb).pipe(res);
+  }
+
+  // Video fallback SVG if frame extraction is not possible
   if (media.media_type === 'video') {
-    const { getVideoThumbnailPath, extractVideoFrame } = require('../utils/thumbnail');
-    const thumbPath = getVideoThumbnailPath(media.id);
-
-    if (fs.existsSync(thumbPath)) {
-      res.setHeader('Content-Type', 'image/jpeg');
-      return fs.createReadStream(thumbPath).pipe(res);
-    }
-
-    try {
-      const generated = await extractVideoFrame(absPath, thumbPath);
-      if (generated && fs.existsSync(generated)) {
-        res.setHeader('Content-Type', 'image/jpeg');
-        return fs.createReadStream(generated).pipe(res);
-      }
-    } catch (err) {
-      logger.warn(`Could not extract video thumbnail for ${media.id}: ${err.message}`);
-    }
-
-    // High quality modern SVG fallback if extraction fails
     res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     return res.send(`
       <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
         <rect width="400" height="400" fill="#0f172a"/>
@@ -435,7 +429,9 @@ const serveThumbnail = asyncHandler(async (req, res) => {
     `.trim());
   }
 
-  res.setHeader('Content-Type', media.mime_type);
+  // Ultimate fallback: serve original file
+  res.setHeader('Content-Type', media.mime_type || 'image/jpeg');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   fs.createReadStream(absPath).pipe(res);
 });
 
@@ -500,11 +496,10 @@ const deleteMedia = asyncHandler(async (req, res) => {
   const media = await Media.findOne({ where: { id: req.params.id, user_id: req.user.id } });
   if (!media) throw new AppError('Media not found', 404);
 
-  // Delete physical files
+  // Delete physical original file and pre-cached thumbnail file
   const absPath = getMediaAbsPath(req.user.storage_folder, media.stored_filename);
-  const thumbPath = getThumbnailAbsPath(req.user.storage_folder, media.stored_filename);
   await deleteFileSafe(absPath);
-  await deleteFileSafe(thumbPath);
+  await deleteThumbnailSafe(media.id, req.user.storage_folder, media.stored_filename);
 
   // Update storage usage
   await req.user.decrement('storage_used_bytes', { by: media.file_size_bytes });
@@ -527,9 +522,8 @@ const bulkDelete = asyncHandler(async (req, res) => {
 
   for (const media of mediaItems) {
     const absPath = getMediaAbsPath(req.user.storage_folder, media.stored_filename);
-    const thumbPath = getThumbnailAbsPath(req.user.storage_folder, media.stored_filename);
     await deleteFileSafe(absPath);
-    await deleteFileSafe(thumbPath);
+    await deleteThumbnailSafe(media.id, req.user.storage_folder, media.stored_filename);
     totalBytes += parseInt(media.file_size_bytes);
   }
 
@@ -677,7 +671,43 @@ const geocodeExisting = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * POST /api/media/generate-thumbnails - Pre-generate missing thumbnails for user's media
+ */
+const generateAllThumbnails = asyncHandler(async (req, res) => {
+  const where = { user_id: req.user.id };
+  const allMedia = await Media.findAll({
+    where,
+    attributes: ['id', 'file_path', 'stored_filename', 'media_type', 'user_id'],
+  });
+
+  res.json({
+    message: `Iniciando verificação e geração de miniaturas em segundo plano para ${allMedia.length} arquivos.`,
+    total: allMedia.length,
+  });
+
+  setImmediate(async () => {
+    let generated = 0;
+    for (const m of allMedia) {
+      try {
+        const webpThumb = getThumbnailAbsPath(m.id);
+        const jpgThumb = getThumbnailJpgAbsPath(m.id);
+        if (!fs.existsSync(webpThumb) && !fs.existsSync(jpgThumb)) {
+          const absPath = getMediaAbsPath(req.user.storage_folder, m.stored_filename);
+          if (fs.existsSync(absPath)) {
+            await generateMediaThumbnail(m.id, absPath, m.media_type);
+            generated++;
+          }
+        }
+      } catch (err) {
+        logger.warn(`Erro ao gerar miniatura para ${m.id}: ${err.message}`);
+      }
+    }
+    logger.info(`[Thumbnails Batch] Processamento concluído: ${generated} miniaturas geradas.`);
+  });
+});
+
 module.exports = {
   uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail,
-  updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting,
+  updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting, generateAllThumbnails,
 };

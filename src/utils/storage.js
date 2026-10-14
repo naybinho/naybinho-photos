@@ -25,12 +25,14 @@ async function getUserStoragePath(storageFolder) {
 async function initStorage() {
   const base = getStorageBase();
   await fs.mkdir(base, { recursive: true });
+  await fs.mkdir(path.join(base, '.thumbnails'), { recursive: true });
 }
 
 /**
  * Delete a file safely (no error if doesn't exist)
  */
 async function deleteFileSafe(filePath) {
+  if (!filePath) return;
   try {
     await fs.unlink(filePath);
   } catch (err) {
@@ -54,17 +56,62 @@ function getMediaAbsPath(storageFolder, storedFilename) {
 }
 
 /**
- * Build absolute path for a thumbnail (uses the single original file)
+ * Directory where pre-rendered thumbnails are stored
  */
-function getThumbnailAbsPath(storageFolder, storedFilename) {
-  return path.join(getStorageBase(), storageFolder, storedFilename);
+function getThumbnailsDir() {
+  return path.join(getStorageBase(), '.thumbnails');
 }
 
 /**
- * Build absolute path for a face crop
+ * Build absolute path for a WebP thumbnail
  */
-function getFaceAbsPath(storageFolder, faceFilename) {
-  return path.join(getStorageBase(), storageFolder, 'faces', faceFilename);
+function getThumbnailAbsPath(mediaId) {
+  return path.join(getThumbnailsDir(), `${mediaId}.webp`);
+}
+
+/**
+ * Build absolute path for a JPEG thumbnail (fallback)
+ */
+function getThumbnailJpgAbsPath(mediaId) {
+  return path.join(getThumbnailsDir(), `${mediaId}.jpg`);
+}
+
+/**
+ * Safely delete thumbnail files (.webp and .jpg) for a media item
+ */
+async function deleteThumbnailSafe(mediaId, storageFolder, storedFilename) {
+  if (mediaId) {
+    await deleteFileSafe(getThumbnailAbsPath(mediaId));
+    await deleteFileSafe(getThumbnailJpgAbsPath(mediaId));
+  }
+  if (storageFolder && storedFilename) {
+    // Also clean up any legacy user-folder based thumbnail if it existed
+    const legacyThumb = path.join(getStorageBase(), storageFolder, '.thumbnails', `${storedFilename}.webp`);
+    await deleteFileSafe(legacyThumb);
+  }
+}
+
+/**
+ * Clean up orphaned thumbnails that have no corresponding media
+ */
+async function cleanOrphanedThumbnails(validMediaIds) {
+  try {
+    const thumbDir = getThumbnailsDir();
+    const files = await fs.readdir(thumbDir);
+    const validSet = new Set(validMediaIds || []);
+    let deletedCount = 0;
+
+    for (const file of files) {
+      const id = path.parse(file).name;
+      if (!validSet.has(id)) {
+        await deleteFileSafe(path.join(thumbDir, file));
+        deletedCount++;
+      }
+    }
+    return deletedCount;
+  } catch (err) {
+    return 0;
+  }
 }
 
 /**
@@ -87,6 +134,7 @@ async function deleteUserStorageFolder(storageFolder) {
 
 module.exports = {
   getStorageBase,
+  getThumbnailsDir,
   getUserStoragePath,
   deleteUserStorageFolder,
   initStorage,
@@ -94,5 +142,7 @@ module.exports = {
   getFileSize,
   getMediaAbsPath,
   getThumbnailAbsPath,
-  getFaceAbsPath,
+  getThumbnailJpgAbsPath,
+  deleteThumbnailSafe,
+  cleanOrphanedThumbnails,
 };

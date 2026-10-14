@@ -1,8 +1,8 @@
 {
-  "versionCode": 9,
-  "versionName": "1.0.8",
-  "notes": "Novo ícone oficial do aplicativo padronizado com a nossa logo e melhorias visuais gerais.",
+  "versionCode": 10,
+  "versionName": "1.0.9",
+  "notes": "Otimização massiva de desempenho: miniaturas em WebP cacheadas, rolagem infinita instantânea e remoção de processamento facial em segundo plano.",
   "filename": "NayBinho-Photos.apk",
   "fileSize": 6881998,
-  "updatedAt": "2026-10-14T14:15:00.000Z"
+  "updatedAt": "2026-10-14T23:10:00.000Z"
 }

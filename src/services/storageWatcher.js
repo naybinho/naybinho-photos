@@ -8,9 +8,9 @@ try {
   logger?.warn('[Storage Watcher] Módulo chokidar não carregado: ' + e.message);
 }
 const { Op } = require('sequelize');
-const { User, Media, Location, AlbumMedia, FaceDetection } = require('../models');
-const { getStorageBase } = require('../utils/storage');
-const { getImageDimensions, getVideoMetadata } = require('../utils/thumbnail');
+const { User, Media, Location, AlbumMedia } = require('../models');
+const { getStorageBase, deleteThumbnailSafe, cleanOrphanedThumbnails } = require('../utils/storage');
+const { generateMediaThumbnail, getImageDimensions, getVideoMetadata } = require('../utils/thumbnail');
 const { extractExif } = require('../utils/exif');
 const logger = require('../utils/logger');
 
@@ -199,17 +199,10 @@ async function handleFileAdded(filePath) {
 
     logger.info(`📸 [Sync] Arquivo adicionado manualmente no disco importado com sucesso: ${fileName} (@${user.username})`);
 
-    // Automatic face recognition for photos added directly to disk
-    if (mediaType === 'photo') {
-      setImmediate(async () => {
-        try {
-          const { processMediaFaces } = require('./faceService');
-          await processMediaFaces(media, user);
-        } catch (faceErr) {
-          logger.warn(`[Sync] Falha no reconhecimento facial automático para ${fileName}: ${faceErr.message}`);
-        }
-      });
-    }
+    // Pre-generate WebP thumbnail on disk
+    generateMediaThumbnail(media.id, filePath, mediaType).catch((thumbErr) => {
+      logger.warn(`[Sync] Falha ao pré-gerar miniatura para ${fileName}: ${thumbErr.message}`);
+    });
   } catch (err) {
     logger.error(`[Sync] Erro ao sincronizar arquivo adicionado ${filePath}:`, err);
   }
@@ -222,7 +215,7 @@ async function handleFileRemoved(filePath) {
   try {
     const resolved = await resolveUserAndFile(filePath);
     if (!resolved) return;
-    const { user, fileName } = resolved;
+    const { user, userFolder, fileName } = resolved;
 
     const media = await Media.findOne({
       where: {
@@ -233,9 +226,9 @@ async function handleFileRemoved(filePath) {
 
     if (!media) return; // Not in DB or already deleted
 
-    // Remove relations
+    // Remove relations and delete physical thumbnail from disk
     await AlbumMedia.destroy({ where: { media_id: media.id } }).catch(() => {});
-    await FaceDetection.destroy({ where: { media_id: media.id } }).catch(() => {});
+    await deleteThumbnailSafe(media.id, userFolder, fileName);
 
     // Decrement storage
     const fileSize = parseInt(media.file_size_bytes || 0, 10);
@@ -245,7 +238,7 @@ async function handleFileRemoved(filePath) {
 
     await media.destroy();
 
-    logger.info(`🗑️ [Sync] Arquivo excluído no disco detectado. Registro removido do banco: ${fileName} (@${user.username})`);
+    logger.info(`🗑️ [Sync] Arquivo excluído no disco detectado. Registro e miniatura removidos: ${fileName} (@${user.username})`);
   } catch (err) {
     logger.error(`[Sync] Erro ao sincronizar arquivo removido ${filePath}:`, err);
   }
@@ -304,9 +297,9 @@ async function syncStorageOnStartup() {
 
       for (const media of allDbMedia) {
         if (!diskFilenames.has(media.stored_filename)) {
-          logger.info(`[Sync Startup] Arquivo ${media.stored_filename} não existe no disco. Removendo do banco...`);
+          logger.info(`[Sync Startup] Arquivo ${media.stored_filename} não existe no disco. Removendo do banco e miniatura...`);
           await AlbumMedia.destroy({ where: { media_id: media.id } }).catch(() => {});
-          await FaceDetection.destroy({ where: { media_id: media.id } }).catch(() => {});
+          await deleteThumbnailSafe(media.id, folder, media.stored_filename);
           const fileSize = parseInt(media.file_size_bytes || 0, 10);
           if (fileSize > 0) {
             await user.decrement('storage_used_bytes', { by: fileSize }).catch(() => {});
@@ -314,6 +307,14 @@ async function syncStorageOnStartup() {
           await media.destroy();
         }
       }
+    }
+
+    // 3. Clean up any orphaned thumbnails on disk
+    const allRemainingMedia = await Media.findAll({ attributes: ['id'] });
+    const validIds = allRemainingMedia.map(m => m.id);
+    const cleaned = await cleanOrphanedThumbnails(validIds);
+    if (cleaned > 0) {
+      logger.info(`[Sync Startup] ${cleaned} miniaturas órfãs removidas do disco.`);
     }
   } catch (err) {
     logger.error('[Sync Startup] Erro durante sincronização inicial do storage:', err);
@@ -334,6 +335,7 @@ function initStorageWatcher() {
     depth: 2,
     ignoreInitial: true,
     persistent: true,
+    ignored: [/(^|[/\\])\.thumbnails/, /(^|[/\\])\./],
     awaitWriteFinish: {
       stabilityThreshold: 1500,
       pollInterval: 300,

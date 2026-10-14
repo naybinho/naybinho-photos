@@ -2325,7 +2325,6 @@
 
         <div class="nav-section-title">Explorar</div>
         <li><a class="nav-item" data-view="locations"><i data-lucide="map-pin"></i> Lugares & Mapa</a></li>
-        <li><a class="nav-item" data-view="people"><i data-lucide="users"></i> Pessoas & Rostos</a></li>
 
         <div class="nav-section-title" id="adminSectionHeader" style="display: none;">Administração</div>
         <li id="adminUsersNavItem" style="display: none;"><a class="nav-item" data-view="users"><i data-lucide="shield-check"></i> Gerenciar Usuários</a></li>
@@ -2374,7 +2373,7 @@
 
           <div class="gp-search-input-box">
             <i data-lucide="search" class="gp-search-ico"></i>
-            <input type="text" id="globalSearch" placeholder="Pesquisar fotos, pessoas, locais..." autocomplete="off">
+            <input type="text" id="globalSearch" placeholder="Pesquisar fotos, locais, álbuns..." autocomplete="off">
           </div>
 
           <div class="gp-topbar-actions">
@@ -2415,18 +2414,7 @@
         <div class="gp-search-hub">
           <div class="gp-search-card-hero">
             <h2>Explorar Memórias</h2>
-            <p>Encontre fotos por pessoas reconhecidas, locais no mapa interativo ou categorias.</p>
-          </div>
-
-          <!-- Pessoas & Rostos -->
-          <div class="gp-explore-sec">
-            <div class="gp-explore-sec-head">
-              <h3><i data-lucide="users"></i> Pessoas & Rostos</h3>
-              <button class="btn btn-secondary btn-sm" onclick="switchView('people')">Ver todas ↗</button>
-            </div>
-            <div class="gp-people-scroll" id="searchPeopleStrip">
-              <div style="color: var(--text-muted); font-size: 0.85rem;">Carregando rostos...</div>
-            </div>
+            <p>Encontre fotos por locais no mapa interativo ou categorias.</p>
           </div>
 
           <!-- Lugares & Mapa -->
@@ -2487,10 +2475,6 @@
             <div class="gp-lib-tile" onclick="switchView('locations')">
               <div class="gp-lib-tile-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;"><i data-lucide="map-pin"></i></div>
               <div class="gp-lib-tile-name">Lugares</div>
-            </div>
-            <div class="gp-lib-tile" onclick="switchView('people')">
-              <div class="gp-lib-tile-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;"><i data-lucide="users"></i></div>
-              <div class="gp-lib-tile-name">Pessoas</div>
             </div>
           </div>
 
@@ -2568,39 +2552,6 @@
 
         <h3 style="margin-bottom: 16px; font-size: 1.1rem; color: var(--text-main);">Locais Registrados</h3>
         <div class="collections-grid" id="locationsGrid"></div>
-      </section>
-
-      <!-- View 6: Pessoas & Rostos -->
-      <section class="content-view" id="view-people">
-        <div id="peopleMainContainer">
-          <div class="view-header">
-            <div class="view-title-group">
-              <h1>Pessoas & Rostos</h1>
-              <p>Reconhecimento facial automático e agrupamento de pessoas</p>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="triggerFaceScan()" style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-              <i data-lucide="scan" style="width: 14px; height: 14px;"></i> Analisar Fotos
-            </button>
-          </div>
-          <div class="collections-grid" id="peopleGrid"></div>
-        </div>
-
-        <!-- Person / Unidentified Detail View -->
-        <div id="peopleDetailContainer" style="display: none;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-              <button class="btn btn-secondary btn-sm" onclick="closePeopleDetail()" style="display: flex; align-items: center; gap: 6px;">
-                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Voltar para Pessoas
-              </button>
-              <div>
-                <h2 id="peopleDetailTitle" style="font-size: 1.3rem; margin: 0; color: var(--text-main);"></h2>
-                <div id="peopleDetailSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;"></div>
-              </div>
-            </div>
-            <div id="peopleDetailActions" style="display: flex; gap: 8px;"></div>
-          </div>
-          <div id="peopleDetailContent"></div>
-        </div>
       </section>
 
       <!-- View 7: Gerenciar Usuários (Admin) -->
@@ -3468,6 +3419,7 @@
       }
 
       updateStorageQuotaUI();
+      if (typeof initInfiniteScroll === 'function') initInfiniteScroll();
       switchView(State.currentView || 'photos');
       if (window.Android && typeof loadBackupView === 'function') {
         loadBackupView();
@@ -3537,7 +3489,6 @@
       });
 
       if (typeof closeAlbumDetail === 'function') closeAlbumDetail();
-      if (typeof closePeopleDetail === 'function') closePeopleDetail();
 
       if (viewName === 'photos') loadPhotos(filter);
       else if (viewName === 'search') loadSearchHub();
@@ -3545,16 +3496,29 @@
       else if (viewName === 'backup') loadBackupView();
       else if (viewName === 'favorites') loadFavorites();
       else if (viewName === 'locations') loadLocations();
-      else if (viewName === 'people') loadPeople();
       else if (viewName === 'users') loadUsers();
 
       lucide.createIcons();
     }
 
-    /* 1. Photos View */
-    async function loadPhotos(filter = 'all') {
+    /* 1. Photos View with High Performance Pagination & Infinite Scroll */
+    State.photosPage = 1;
+    State.photosHasMore = true;
+    State.photosLoading = false;
+    State.photosFilter = 'all';
+
+    async function loadPhotos(filter = 'all', append = false) {
+      if (State.photosLoading) return;
+      State.photosLoading = true;
       const grid = document.getElementById('photosGrid');
-      grid.innerHTML = '<div style="color: var(--text-muted); padding: 40px; text-align: center;">Carregando suas fotos...</div>';
+
+      if (!append) {
+        State.photosPage = 1;
+        State.photosHasMore = true;
+        State.photos = [];
+        grid.innerHTML = '<div style="color: var(--text-muted); padding: 40px; text-align: center;">Carregando suas memórias...</div>';
+      }
+      State.photosFilter = filter;
       
       // Synchronize filter pills
       document.querySelectorAll('#view-photos .filter-pill').forEach(b => {
@@ -3569,19 +3533,69 @@
       });
 
       try {
-        let endpoint = '/media?limit=all';
+        let endpoint = `/media?limit=60&page=${State.photosPage}`;
         if (filter === 'photo' || filter === 'video') endpoint += `&media_type=${filter}`;
         const res = await API.req(endpoint);
-        State.photos = res.media || [];
+        const newItems = res.media || [];
+
+        if (append) {
+          State.photos = State.photos.concat(newItems);
+        } else {
+          State.photos = newItems;
+        }
         State.filteredPhotos = State.photos;
 
+        if (!newItems.length || newItems.length < 60 || State.photos.length >= (res.total || 0)) {
+          State.photosHasMore = false;
+        }
+
         const countType = filter === 'photo' ? 'foto(s)' : (filter === 'video' ? 'vídeo(s)' : 'item(s)');
-        document.getElementById('photosCountText').textContent = `${State.photos.length} ${countType}`;
+        document.getElementById('photosCountText').textContent = `${res.total || State.photos.length} ${countType}`;
 
         renderPhotoCards(grid, State.photos);
+
+        // Remove old loader if any
+        const oldLoader = document.getElementById('photosInfiniteLoader');
+        if (oldLoader) oldLoader.remove();
+
+        if (State.photosHasMore) {
+          const loader = document.createElement('div');
+          loader.id = 'photosInfiniteLoader';
+          loader.style.cssText = 'padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.85rem; width: 100%;';
+          loader.innerHTML = '<span>Role para carregar mais memórias...</span>';
+          grid.appendChild(loader);
+        }
       } catch (err) {
-        renderViewError(grid, err, () => loadPhotos(filter));
+        if (!append) renderViewError(grid, err, () => loadPhotos(filter));
+      } finally {
+        State.photosLoading = false;
       }
+    }
+
+    let infiniteScrollInitialized = false;
+    function initInfiniteScroll() {
+      if (infiniteScrollInitialized) return;
+      infiniteScrollInitialized = true;
+
+      const checkScroll = () => {
+        if (!State.photosHasMore || State.photosLoading) return;
+        const currentView = document.querySelector('.content-view.active');
+        if (!currentView || currentView.id !== 'view-photos') return;
+
+        const mainEl = document.querySelector('.main-content');
+        const scrollHeight = mainEl ? mainEl.scrollHeight : document.documentElement.scrollHeight;
+        const scrollTop = mainEl ? mainEl.scrollTop : (window.scrollY || window.pageYOffset);
+        const clientHeight = mainEl ? mainEl.clientHeight : window.innerHeight;
+
+        if (scrollHeight - scrollTop - clientHeight < 600) {
+          State.photosPage++;
+          loadPhotos(State.photosFilter, true);
+        }
+      };
+
+      const mainEl = document.querySelector('.main-content');
+      if (mainEl) mainEl.addEventListener('scroll', checkScroll, { passive: true });
+      window.addEventListener('scroll', checkScroll, { passive: true });
     }
 
     /* Google Photos Style Date-Grouped Grid */
@@ -3685,25 +3699,7 @@
     }
 
     async function loadSearchHub() {
-      const strip = document.getElementById('searchPeopleStrip');
-      if (!strip) return;
-      try {
-        const res = await API.req('/faces');
-        const faces = res.faces || [];
-        if (!faces.length) {
-          strip.innerHTML = '<div style="font-size: 0.82rem; color: var(--text-muted); padding: 8px 0;">Nenhum rosto identificado ainda. Ao enviar fotos com pessoas, os rostos aparecerão aqui.</div>';
-          return;
-        }
-        strip.innerHTML = faces.slice(0, 12).map(f => `
-          <div class="gp-person-bubble" onclick="openPersonDetail('${f.id}', '${encodeURIComponent(f.name || 'Pessoa')}')">
-            <img src="${API.getMediaUrl(f.media_id, true)}" alt="${f.name || 'Pessoa'}" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'><circle cx=\\'50\\' cy=\\'50\\' r=\\'50\\' fill=\\'%234285f4\\'/></svg>'">
-            <div class="gp-person-name">${f.name || 'Pessoa'}</div>
-          </div>
-        `).join('');
-        lucide.createIcons();
-      } catch (e) {
-        strip.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-muted);">Carregamento concluído.</div>';
-      }
+      if (window.lucide) lucide.createIcons();
     }
 
     /* ==================== BACKUP & FREE UP SPACE LOGIC ==================== */
@@ -4663,152 +4659,7 @@
       if (window.lucide) lucide.createIcons();
     }
 
-    async function openPeopleCluster(clusterId, encodedName) {
-      const name = decodeURIComponent(encodedName || '');
-      const main = document.getElementById('peopleMainContainer');
-      const detail = document.getElementById('peopleDetailContainer');
-      const titleEl = document.getElementById('peopleDetailTitle');
-      const subtitleEl = document.getElementById('peopleDetailSubtitle');
-      const actionsEl = document.getElementById('peopleDetailActions');
-      const contentEl = document.getElementById('peopleDetailContent');
-
-      main.style.display = 'none';
-      detail.style.display = 'block';
-      actionsEl.innerHTML = '';
-      contentEl.innerHTML = '<div style="color: var(--text-muted); padding: 40px; text-align: center;">Carregando...</div>';
-      titleEl.textContent = name || 'Detalhes';
-      subtitleEl.textContent = '';
-      if (window.lucide) lucide.createIcons();
-
-      if (clusterId === 'unidentified') {
-        titleEl.textContent = 'Rostos não identificados';
-        try {
-          const res = await API.req('/faces/unidentified?limit=100');
-          const detections = res.detections || [];
-          subtitleEl.textContent = `${detections.length} ${detections.length === 1 ? 'rosto detectado' : 'rostos detectados'} aguardando identificação`;
-
-          if (!detections.length) {
-            contentEl.innerHTML = `
-              <div class="empty-state">
-                <i data-lucide="check-circle"></i>
-                <h3>Tudo organizado!</h3>
-                <p>Todos os rostos detectados já foram identificados ou não há fotos com rostos pendentes.</p>
-              </div>
-            `;
-            if (window.lucide) lucide.createIcons();
-            return;
-          }
-
-          contentEl.innerHTML = `
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px;">
-              ${detections.map(d => {
-                const score = d.detection_score ? Math.round(d.detection_score * 100) : null;
-                const mediaTitle = d.media?.title || d.media?.original_filename || 'Foto';
-                return `
-                  <div class="collection-card" style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;">
-                    <div style="width: 120px; height: 120px; border-radius: 50%; overflow: hidden; border: 3px solid var(--accent); box-shadow: var(--shadow-sm); flex-shrink: 0; background: var(--bg-hover); cursor: pointer;" onclick="openPhotoById('${d.media_id}')" title="Clique para ver foto completa">
-                      <img src="/api/faces/face-image/${d.id}?token=${encodeURIComponent(State.token)}" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<i data-lucide=\\'user\\' style=\\'width:48px;height:48px;\\'></i>'; lucide.createIcons();">
-                    </div>
-                    <div style="font-size: 0.85rem; font-weight: 500; color: var(--text-main); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(mediaTitle)}</div>
-                    ${score ? `<div style="font-size: 0.75rem; color: var(--text-muted);">Confiança: ${score}%</div>` : ''}
-                    <div style="display: flex; gap: 6px; width: 100%; margin-top: auto;">
-                      <button class="btn btn-primary btn-sm" onclick="nameFace('${d.id}')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 0.78rem;">
-                        <i data-lucide="user-plus" style="width: 13px; height: 13px;"></i> Identificar
-                      </button>
-                      ${d.media_id ? `
-                        <button class="btn btn-secondary btn-sm" onclick="openPhotoById('${d.media_id}')" title="Ver foto completa" style="padding: 6px 10px;">
-                          <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
-                        </button>
-                      ` : ''}
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-          if (window.lucide) lucide.createIcons();
-        } catch (err) {
-          renderViewError(contentEl, err, () => openPeopleCluster(clusterId, encodedName));
-        }
-      } else {
-        // Identified person
-        try {
-          const res = await API.req(`/faces/persons/${clusterId}`);
-          const person = res.person;
-          if (!person) throw new Error('Pessoa não encontrada');
-
-          titleEl.textContent = person.name;
-
-          actionsEl.innerHTML = `
-            <button class="btn btn-secondary btn-sm" onclick="renamePerson('${person.id}', '${encodeURIComponent(person.name)}')" style="display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i> Renomear
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="deletePerson('${person.id}')" style="display: flex; align-items: center; gap: 6px; color: var(--accent-danger);">
-              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Excluir
-            </button>
-          `;
-
-          const photosMap = new Map();
-          (person.detections || []).forEach(d => {
-            if (d.media && !photosMap.has(d.media.id)) {
-              photosMap.set(d.media.id, d.media);
-            }
-          });
-          const photos = Array.from(photosMap.values());
-          subtitleEl.textContent = `${photos.length} ${photos.length === 1 ? 'foto encontrada' : 'fotos encontradas'}`;
-
-          if (!photos.length) {
-            contentEl.innerHTML = `
-              <div class="empty-state">
-                <i data-lucide="image"></i>
-                <h3>Nenhuma foto associada</h3>
-                <p>Nenhuma foto foi associada a esta pessoa ainda.</p>
-              </div>
-            `;
-            if (window.lucide) lucide.createIcons();
-            return;
-          }
-
-          State.filteredPhotos = photos;
-          contentEl.innerHTML = '<div class="media-grid" id="personPhotosInnerGrid"></div>';
-          renderPhotoCards(document.getElementById('personPhotosInnerGrid'), photos);
-          if (window.lucide) lucide.createIcons();
-        } catch (err) {
-          renderViewError(contentEl, err, () => openPeopleCluster(clusterId, encodedName));
-        }
-      }
-    }
-
-    async function nameFace(detectionId) {
-      const name = prompt('Qual o nome desta pessoa?');
-      if (!name || !name.trim()) return;
-
-      try {
-        const personsRes = await API.req('/faces/persons');
-        const existing = (personsRes.persons || []).find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
-        let personId;
-
-        if (existing) {
-          personId = existing.id;
-        } else {
-          const createRes = await API.req('/faces/persons', {
-            method: 'POST',
-            body: JSON.stringify({ name: name.trim() }),
-          });
-          personId = createRes.person.id;
-        }
-
-        await API.req(`/faces/detections/${detectionId}/assign`, {
-          method: 'POST',
-          body: JSON.stringify({ person_id: personId }),
-        });
-
-        alert(`Rosto atribuído com sucesso a "${name.trim()}"!`);
-        openPeopleCluster('unidentified', '');
-      } catch (err) {
-        alert('Erro ao identificar: ' + err.message);
-      }
-    }
+    function closePeopleDetail() {}
 
     async function openPhotoById(mediaId) {
       try {
@@ -4817,86 +4668,6 @@
         if (!media) return;
         State.filteredPhotos = [media];
         openLightbox(0);
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    async function renamePerson(personId, encodedOldName) {
-      const oldName = decodeURIComponent(encodedOldName);
-      const newName = prompt('Novo nome para esta pessoa:', oldName);
-      if (!newName || !newName.trim() || newName.trim() === oldName) return;
-
-      try {
-        await API.req(`/faces/persons/${personId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ name: newName.trim() }),
-        });
-        openPeopleCluster(personId, encodeURIComponent(newName.trim()));
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    async function deletePerson(personId) {
-      if (!confirm('Deseja realmente remover esta pessoa? As fotos permanecerão salvas.')) return;
-
-      try {
-        await API.req(`/faces/persons/${personId}`, { method: 'DELETE' });
-        closePeopleDetail();
-        loadPeople();
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    /* 7. People & Faces View */
-    async function loadPeople() {
-      closePeopleDetail();
-      const grid = document.getElementById('peopleGrid');
-      grid.innerHTML = '<div style="color: var(--text-muted); padding: 40px;">Carregando pessoas...</div>';
-      try {
-        const res = await API.req('/faces/clusters');
-        const clusters = res.clusters || [];
-        if (!clusters.length) {
-          grid.innerHTML = `
-            <div class="empty-state" style="grid-column: 1 / -1;">
-              <i data-lucide="users"></i>
-              <h3>Nenhum rosto agrupado</h3>
-              <p>O reconhecimento facial é executado automaticamente quando fotos com rostos são enviadas.</p>
-              <div style="margin-top: 16px;">
-                <button class="btn btn-primary btn-sm" onclick="triggerFaceScan()"><i data-lucide="scan"></i> Analisar Fotos Existentes</button>
-              </div>
-            </div>
-          `;
-          lucide.createIcons();
-          return;
-        }
-
-        grid.innerHTML = clusters.map(c => `
-          <div class="collection-card" onclick="openPeopleCluster('${c.id}', '${encodeURIComponent(c.name || '')}')" style="cursor: pointer;">
-            <div class="collection-cover" style="display: flex; align-items: center; justify-content: center; background: var(--bg-hover); overflow: hidden; height: 180px;">
-              ${c.cover_detection_id ? `<img src="/api/faces/face-image/${c.cover_detection_id}?token=${encodeURIComponent(State.token)}" style="width: 100%; height: 100%; object-fit: cover; display: block;">` : '<i data-lucide="user" style="width: 48px; height: 48px;"></i>'}
-            </div>
-            <div class="collection-body">
-              <div class="collection-title">${escapeHtml(c.name || 'Pessoa sem nome')}</div>
-              <div class="collection-meta">
-                <span>${c.face_count || 1} ${c.face_count === 1 ? 'foto' : 'fotos'}</span>
-              </div>
-            </div>
-          </div>
-        `).join('');
-        lucide.createIcons();
-      } catch (err) {
-        renderViewError(grid, err, () => loadPeople());
-      }
-    }
-
-    async function triggerFaceScan() {
-      try {
-        const res = await API.req('/faces/analyze-all', { method: 'POST' });
-        alert(res.message || 'Análise de rostos iniciada em segundo plano!');
-        setTimeout(() => loadPeople(), 2500);
       } catch (err) {
         alert(err.message);
       }

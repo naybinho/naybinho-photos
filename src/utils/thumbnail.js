@@ -1,50 +1,89 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const { getStorageBase, getThumbnailAbsPath } = require('./storage');
+const { getStorageBase, getThumbnailAbsPath, getThumbnailJpgAbsPath, getThumbnailsDir } = require('./storage');
 const logger = require('./logger');
 
 const THUMB_WIDTH = parseInt(process.env.THUMBNAIL_WIDTH || '400');
 const THUMB_HEIGHT = parseInt(process.env.THUMBNAIL_HEIGHT || '400');
 
 /**
- * Generate a JPEG thumbnail for an image file
- * @param {string} sourcePath - Absolute path to the original image
- * @param {string} storageFolder - User's storage folder name
- * @param {string} storedFilename - The stored filename of the media
- * @returns {string|null} Absolute path to the thumbnail, or null if failed
+ * Generate a cached thumbnail on disk for a photo or video
+ * Uses WebP for maximum compression and performance, with JPEG fallback
+ * @param {string} mediaId - UUID of the media item
+ * @param {string} sourcePath - Absolute path to original file
+ * @param {string} mediaType - 'photo' or 'video'
+ * @returns {Promise<string|null>} Path to created thumbnail file, or null
  */
-async function generateImageThumbnail(sourcePath, storageFolder, storedFilename) {
-  const thumbPath = getThumbnailAbsPath(storageFolder, storedFilename);
-  try {
-    await sharp(sourcePath, { failOnError: false, failOn: 'none' })
-      .rotate() // auto-rotate based on EXIF orientation
-      .resize(THUMB_WIDTH, THUMB_HEIGHT, {
-        fit: 'cover',
-        position: 'attention', // smart crop
-      })
-      .jpeg({ quality: 80, progressive: true })
-      .toFile(thumbPath);
-    return thumbPath;
-  } catch (err) {
-    logger.warn(`Failed to generate thumbnail for ${storedFilename}: ${err.message}`);
+async function generateMediaThumbnail(mediaId, sourcePath, mediaType = 'photo') {
+  if (!fs.existsSync(sourcePath)) return null;
+
+  const thumbDir = getThumbnailsDir();
+  if (!fs.existsSync(thumbDir)) {
+    fs.mkdirSync(thumbDir, { recursive: true });
+  }
+
+  if (mediaType === 'photo') {
+    const webpPath = getThumbnailAbsPath(mediaId);
+    try {
+      await sharp(sourcePath, { failOnError: false, failOn: 'none' })
+        .rotate()
+        .resize(THUMB_WIDTH, THUMB_HEIGHT, {
+          fit: 'cover',
+          position: 'attention',
+        })
+        .webp({ quality: 80, effort: 4 })
+        .toFile(webpPath);
+      return webpPath;
+    } catch (err) {
+      logger.warn(`WebP thumbnail generation failed for ${mediaId}, falling back to JPEG: ${err.message}`);
+      try {
+        const jpgPath = getThumbnailJpgAbsPath(mediaId);
+        await sharp(sourcePath, { failOnError: false, failOn: 'none' })
+          .rotate()
+          .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover' })
+          .jpeg({ quality: 80, progressive: true })
+          .toFile(jpgPath);
+        return jpgPath;
+      } catch (err2) {
+        logger.error(`Thumbnail generation failed completely for ${mediaId}: ${err2.message}`);
+        return null;
+      }
+    }
+  }
+
+  if (mediaType === 'video') {
+    const jpgPath = getThumbnailJpgAbsPath(mediaId);
+    try {
+      const generated = await extractVideoFrame(sourcePath, jpgPath);
+      if (generated && fs.existsSync(generated)) {
+        return generated;
+      }
+    } catch (err) {
+      logger.warn(`Video thumbnail generation failed for ${mediaId}: ${err.message}`);
+    }
     return null;
   }
+
+  return null;
+}
+
+/**
+ * Legacy wrapper: Generate a thumbnail for an image file
+ */
+async function generateImageThumbnail(sourcePath, storageFolder, storedFilename) {
+  return null;
 }
 
 /**
  * Get cached thumbnail path for video
  */
 function getVideoThumbnailPath(mediaId) {
-  const thumbDir = path.join(getStorageBase(), '.thumbnails');
-  if (!fs.existsSync(thumbDir)) {
-    fs.mkdirSync(thumbDir, { recursive: true });
-  }
-  return path.join(thumbDir, `${mediaId}.jpg`);
+  return getThumbnailJpgAbsPath(mediaId);
 }
 
 /**
- * Generate a JPEG thumbnail for a video file using FFmpeg and cache it
+ * Generate a thumbnail frame for a video file using FFmpeg and cache it
  */
 async function extractVideoFrame(sourcePath, outThumbPath) {
   const ffmpegBin = (() => {
@@ -87,11 +126,10 @@ async function extractVideoFrame(sourcePath, outThumbPath) {
 }
 
 /**
- * Generate a JPEG thumbnail for a video file using FFmpeg
+ * Legacy wrapper: Generate a thumbnail for a video file
  */
 async function generateVideoThumbnail(sourcePath, storageFolder, storedFilename) {
-  const thumbPath = getThumbnailAbsPath(storageFolder, storedFilename);
-  return extractVideoFrame(sourcePath, thumbPath);
+  return null;
 }
 
 /**
@@ -134,6 +172,7 @@ async function getVideoMetadata(filePath) {
 }
 
 module.exports = {
+  generateMediaThumbnail,
   generateImageThumbnail,
   generateVideoThumbnail,
   getVideoThumbnailPath,

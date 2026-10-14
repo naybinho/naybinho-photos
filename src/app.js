@@ -11,7 +11,6 @@ const albumRoutes = require('./routes/albums');
 const galleryRoutes = require('./routes/galleries');
 const mediaRoutes = require('./routes/media');
 const locationRoutes = require('./routes/locations');
-const faceRoutes = require('./routes/faces');
 const swaggerRoutes = require('./routes/swagger');
 const appUpdateRoutes = require('./routes/appUpdate');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -80,7 +79,6 @@ app.use('/api/albums', albumRoutes);
 app.use('/api/galleries', galleryRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/locations', locationRoutes);
-app.use('/api/faces', faceRoutes);
 app.use('/api/app/update', appUpdateRoutes);
 app.use('/api/docs', swaggerRoutes);
 

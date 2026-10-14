@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     container_name: naybinho-photos-app
     environment:
-      DB_HOST: ${DB_HOST:-192.168.1.2}
-      DB_NAME: ${DB_NAME:-photonb}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-postgres}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
-      JWT_SECRET: ${JWT_SECRET}
+      DB_HOST: 192.168.1.2
+      DB_NAME: photonb
+      DB_PASSWORD: hghgDFGe455677YuytYy
+      DB_PORT: 5432
+      DB_USER: postgres
+      JWT_EXPIRES_IN: 30d
+      JWT_SECRET: yCMQnAqi3M1U0YfsC5xQqdGJoeSMu6yCy
       MAX_FILE_SIZE_MB: 1024
       NODE_ENV: production
       PORT: 9453

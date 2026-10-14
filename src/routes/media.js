@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const {
   uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail,
-  updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting,
+  updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting, generateAllThumbnails,
 } = require('../controllers/mediaController');
 const { authenticate } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
@@ -18,6 +18,7 @@ router.get('/', listMedia);
 router.post('/bulk-delete', bulkDelete);
 router.patch('/bulk-update', bulkUpdate);
 router.post('/geocode-existing', geocodeExisting);
+router.post('/generate-thumbnails', generateAllThumbnails);
 
 // Single item operations
 router.get('/:id', getMedia);
