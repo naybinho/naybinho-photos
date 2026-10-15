@@ -3423,6 +3423,10 @@
         } catch (e) {}
       }
 
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+
       updateStorageQuotaUI();
       if (typeof initInfiniteScroll === 'function') initInfiniteScroll();
       switchView(State.currentView || 'photos');
@@ -3506,13 +3510,24 @@
       lucide.createIcons();
     }
 
-    /* 1. Photos View with High Performance Pagination & Infinite Scroll */
+    /* 1. Photos View with High Performance Continuous Auto-Loading */
     State.photosPage = 1;
     State.photosHasMore = true;
     State.photosLoading = false;
     State.photosFilter = 'all';
     State.totalPhotosCount = 0;
-    const PHOTOS_PAGE_SIZE = 150;
+    const PHOTOS_PAGE_SIZE = 200;
+
+    let autoLoadTimer = null;
+    function scheduleAutoLoadMore() {
+      if (!State.photosHasMore) return;
+      clearTimeout(autoLoadTimer);
+      autoLoadTimer = setTimeout(async () => {
+        if (State.photosHasMore && !State.photosLoading) {
+          await loadMorePhotos();
+        }
+      }, 150);
+    }
 
     let photosIntersectionObserver = null;
     function observeInfiniteLoader(loaderEl) {
@@ -3520,7 +3535,6 @@
       if (photosIntersectionObserver) {
         photosIntersectionObserver.disconnect();
       }
-      // root: null uses the device viewport directly for 100% reliable detection on Android WebView
       photosIntersectionObserver = new IntersectionObserver((entries) => {
         const entry = entries[0];
         if (entry && entry.isIntersecting) {
@@ -3546,7 +3560,7 @@
         const spinner = loader.querySelector('.spinner-small');
         const text = loader.querySelector('.loader-text');
         if (spinner) spinner.style.display = 'inline-block';
-        if (text) text.textContent = 'Carregando mais fotos e vídeos...';
+        if (text) text.textContent = 'Carregando fotos automaticamente...';
       }
 
       State.photosPage = (State.photosPage || 1) + 1;
@@ -3559,6 +3573,7 @@
       const grid = document.getElementById('photosGrid');
 
       if (!append) {
+        clearTimeout(autoLoadTimer);
         State.photosPage = 1;
         State.photosHasMore = true;
         State.photos = [];
@@ -3603,13 +3618,9 @@
           const formattedTotal = totalCount.toLocaleString('pt-BR');
           const formattedLoaded = State.photos.length.toLocaleString('pt-BR');
           if (State.photos.length < totalCount) {
-            countEl.innerHTML = `Exibindo <b style="color: var(--text-main);">${formattedLoaded}</b> de <b>${formattedTotal}</b> ${countType} <span style="font-size: 0.75rem; opacity: 0.85; margin-left: 6px; cursor: pointer; color: var(--accent, #4285f4); text-decoration: underline;">(toque para carregar mais)</span>`;
-            countEl.style.cursor = 'pointer';
-            countEl.onclick = () => loadMorePhotos();
+            countEl.innerHTML = `Carregando fotos automaticamente... (<b style="color: var(--text-main);">${formattedLoaded}</b> de <b>${formattedTotal}</b> ${countType}) <span class="spinner-small" style="display:inline-block; width:12px; height:12px; border:2px solid var(--accent, #4285f4); border-top-color:transparent; border-radius:50%; animation:gp-spin 0.8s linear infinite; vertical-align:middle; margin-left:6px;"></span>`;
           } else {
-            countEl.textContent = `${formattedTotal} ${countType}`;
-            countEl.style.cursor = 'default';
-            countEl.onclick = null;
+            countEl.innerHTML = `<b>${formattedTotal}</b> ${countType}`;
           }
         }
 
@@ -3618,9 +3629,8 @@
 
         renderPhotoCards(grid, State.photos);
 
-        const lbModal = document.getElementById('lightboxModal');
-        const isLightboxActive = lbModal && lbModal.classList.contains('active');
-        if (mainArea && append && prevScroll > 0 && !isLightboxActive) {
+        // Always preserve scroll position during progressive append
+        if (mainArea && append && prevScroll > 0) {
           mainArea.scrollTop = prevScroll;
         }
 
@@ -3633,17 +3643,19 @@
         if (State.photosHasMore) {
           const loader = document.createElement('div');
           loader.id = 'photosInfiniteLoader';
-          loader.style.cssText = 'padding: 24px 16px; text-align: center; width: 100%; cursor: pointer; user-select: none;';
+          loader.style.cssText = 'padding: 20px 16px; text-align: center; width: 100%;';
           loader.innerHTML = `
-            <div style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-color); border-radius: 99px; color: var(--text-muted); font-size: 0.85rem; transition: all 0.2s ease;">
-              <span class="spinner-small" style="display: none; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent, #4285f4); border-radius: 50%; animation: gp-spin 0.8s linear infinite;"></span>
-              <span class="loader-text">Role para carregar mais ou clique aqui (${State.photos.length.toLocaleString('pt-BR')} de ${totalCount.toLocaleString('pt-BR')})</span>
+            <div style="display: inline-flex; align-items: center; gap: 10px; padding: 8px 20px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); border-radius: 99px; color: var(--text-muted); font-size: 0.82rem;">
+              <span class="spinner-small" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent, #4285f4); border-radius: 50%; animation: gp-spin 0.8s linear infinite;"></span>
+              <span class="loader-text">Carregando todas as suas fotos automaticamente (${State.photos.length.toLocaleString('pt-BR')} de ${totalCount.toLocaleString('pt-BR')})...</span>
             </div>
           `;
-          loader.onclick = () => loadMorePhotos();
           grid.appendChild(loader);
 
           observeInfiniteLoader(loader);
+
+          // Automatically schedule the next page without requiring any user click
+          scheduleAutoLoadMore();
         } else if (State.photos.length > 0) {
           const endDiv = document.createElement('div');
           endDiv.id = 'photosInfiniteEnd';
@@ -3781,7 +3793,7 @@
               ${items.map(({ item, idx }) => {
                 const isVideo = item.media_type === 'video';
                 return `
-                  <div class="media-card gp-photo-tile" onclick="openLightbox(${idx})">
+                  <div class="media-card gp-photo-tile" id="photo-card-${item.id}" data-photo-id="${item.id}" onclick="openLightbox(${idx})">
                     <img src="${API.getMediaUrl(item.id, false)}" alt="${item.title || item.original_filename}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'><rect fill=\\'%231f1f20\\' width=\\'100\\' height=\\'100\\'/><text fill=\\'%2364748b\\' x=\\'50\\' y=\\'50\\' text-anchor=\\'middle\\' font-size=\\'10\\'>Sem Prévia</text></svg>'">
                     ${isVideo ? `
                       <div class="gp-video-badge">
@@ -4181,6 +4193,12 @@
       const item = State.filteredPhotos ? State.filteredPhotos[index] : null;
       if (!item) return;
 
+      State.lastViewedPhotoId = item.id;
+      const mainArea = document.querySelector('.main-area');
+      if (mainArea && !document.getElementById('lightboxModal')?.classList.contains('active')) {
+        State.scrollBeforeLightbox = mainArea.scrollTop;
+      }
+
       const modal = document.getElementById('lightboxModal');
       const container = document.getElementById('lightboxMediaContainer');
 
@@ -4350,10 +4368,27 @@
     }
 
     function closeLightbox() {
-      document.getElementById('lightboxModal')?.classList.remove('active');
+      const modal = document.getElementById('lightboxModal');
+      if (!modal || !modal.classList.contains('active')) return;
+      modal.classList.remove('active');
       const container = document.getElementById('lightboxMediaContainer');
       if (container) container.innerHTML = '';
       closeViewerInfoSheet();
+
+      // Ensure gallery view remains at the last viewed photo, never jumping to top
+      const targetId = State.lastViewedPhotoId || (State.filteredPhotos && State.filteredPhotos[State.lightboxIndex] ? State.filteredPhotos[State.lightboxIndex].id : null);
+      if (targetId) {
+        requestAnimationFrame(() => {
+          const card = document.getElementById(`photo-card-${targetId}`) ||
+                       document.querySelector(`[data-photo-id="${targetId}"]`);
+          const mainArea = document.querySelector('.main-area');
+          if (card) {
+            card.scrollIntoView({ behavior: 'auto', block: 'center' });
+          } else if (mainArea && State.scrollBeforeLightbox > 0) {
+            mainArea.scrollTop = State.scrollBeforeLightbox;
+          }
+        });
+      }
     }
 
     function openViewerInfoSheet() {
@@ -5231,7 +5266,12 @@
       });
 
       // Google Photos Immersive Viewer Controls & Actions
-      document.getElementById('lightboxCloseBtn')?.addEventListener('click', closeLightbox);
+      document.getElementById('lightboxCloseBtn')?.addEventListener('click', () => {
+        closeLightbox();
+        if (history.state && history.state.pv_lightbox) {
+          history.back();
+        }
+      });
       document.getElementById('lightboxPrevBtn')?.addEventListener('click', lightboxPrev);
       document.getElementById('lightboxNextBtn')?.addEventListener('click', lightboxNext);
 
