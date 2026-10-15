@@ -4338,48 +4338,76 @@
       const item = State.filteredPhotos[State.lightboxIndex];
       if (!item) return;
 
-      // 1. If running natively in Android app:
-      if (window.Android && window.Android.shareMedia) {
-        window.Android.shareMedia(item.id, item.title || item.original_filename, item.media_type || 'photo');
-        return;
+      const btn = document.getElementById('viewerShareBtn');
+      const span = btn ? btn.querySelector('span') : null;
+      const origText = span ? span.textContent : '';
+      if (btn) {
+        btn.style.opacity = '0.7';
+        btn.style.pointerEvents = 'none';
+        if (span) span.textContent = 'Preparando...';
       }
 
-      // 2. If running on Web / Mobile Browser with Web Share API:
-      const downloadUrl = `/api/media/${item.id}/download?token=${encodeURIComponent(State.token)}`;
-      if (navigator.share) {
-        try {
-          const res = await fetch(downloadUrl);
-          const blob = await res.blob();
-          const ext = item.media_type === 'video' ? 'mp4' : 'jpg';
-          const file = new File([blob], item.original_filename || `photo_${item.id}.${ext}`, { type: blob.type });
+      const resetBtn = () => {
+        if (btn) {
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+          if (span && origText) span.textContent = origText;
+        }
+      };
 
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: item.title || 'Foto',
-            });
-            return;
-          } else {
-            await navigator.share({
-              title: item.title || 'Foto NayBinho Photos',
-              url: window.location.origin + downloadUrl
-            });
-            return;
-          }
-        } catch (err) {
-          if (err.name !== 'AbortError') {
+      try {
+        // 1. If running natively in Android app:
+        if (window.Android && window.Android.shareMedia) {
+          window.Android.shareMedia(item.id, item.original_filename || item.title || '', item.media_type || 'photo');
+          setTimeout(resetBtn, 1200);
+          return;
+        }
+
+        // 2. If running on Web / Mobile Browser with Web Share API:
+        // Use /file instead of /download so it uses browser cache!
+        const fileUrl = API.getMediaUrl(item.id, true);
+        if (navigator.share) {
+          try {
+            const res = await fetch(fileUrl);
+            const blob = await res.blob();
+            const ext = item.media_type === 'video' ? 'mp4' : 'jpg';
+            const filename = item.original_filename || (item.title ? `${item.title}.${ext}` : `photo_${item.id}.${ext}`);
+            const file = new File([blob], filename, { type: blob.type || (item.media_type === 'video' ? 'video/mp4' : 'image/jpeg') });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: item.title || item.original_filename || 'Foto',
+              });
+              resetBtn();
+              return;
+            } else {
+              await navigator.share({
+                title: item.title || item.original_filename || 'Foto NayBinho Photos',
+                url: window.location.origin + fileUrl
+              });
+              resetBtn();
+              return;
+            }
+          } catch (err) {
+            if (err.name === 'AbortError') {
+              resetBtn();
+              return;
+            }
             console.warn('Web Share fallback:', err);
-          } else {
-            return;
           }
         }
-      }
 
-      // 3. Fallback: direct download
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = item.original_filename || 'photo';
-      a.click();
+        // 3. Fallback: direct download
+        const a = document.createElement('a');
+        a.href = `/api/media/${item.id}/download?token=${encodeURIComponent(State.token)}`;
+        a.download = item.original_filename || 'photo';
+        a.click();
+        resetBtn();
+      } catch (err) {
+        console.error('Erro ao compartilhar:', err);
+        resetBtn();
+      }
     }
 
     /* Delete Photo (with Google Photos seamless transition) */
