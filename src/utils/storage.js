@@ -77,12 +77,20 @@ function getThumbnailJpgAbsPath(mediaId) {
 }
 
 /**
- * Safely delete thumbnail files (.webp and .jpg) for a media item
+ * Build absolute path for high-res optimized share image (WhatsApp, Instagram, etc.)
+ */
+function getShareImageAbsPath(mediaId) {
+  return path.join(getThumbnailsDir(), `share_${mediaId}.jpg`);
+}
+
+/**
+ * Safely delete thumbnail files (.webp and .jpg) and share files for a media item
  */
 async function deleteThumbnailSafe(mediaId, storageFolder, storedFilename) {
   if (mediaId) {
     await deleteFileSafe(getThumbnailAbsPath(mediaId));
     await deleteFileSafe(getThumbnailJpgAbsPath(mediaId));
+    await deleteFileSafe(getShareImageAbsPath(mediaId));
   }
   if (storageFolder && storedFilename) {
     // Also clean up any legacy user-folder based thumbnail if it existed
@@ -143,6 +151,7 @@ module.exports = {
   getMediaAbsPath,
   getThumbnailAbsPath,
   getThumbnailJpgAbsPath,
+  getShareImageAbsPath,
   deleteThumbnailSafe,
   cleanOrphanedThumbnails,
 };

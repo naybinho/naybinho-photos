@@ -4,10 +4,11 @@ const { Op, Sequelize } = require('sequelize');
 const { Media, Gallery, Location, Album } = require('../models');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { AppError } = require('../middleware/errorHandler');
-const { deleteFileSafe, getMediaAbsPath, getThumbnailAbsPath, getThumbnailJpgAbsPath, deleteThumbnailSafe } = require('../utils/storage');
+const { deleteFileSafe, getMediaAbsPath, getThumbnailAbsPath, getThumbnailJpgAbsPath, getShareImageAbsPath, getThumbnailsDir, deleteThumbnailSafe } = require('../utils/storage');
 const { generateMediaThumbnail, getImageDimensions, getVideoMetadata } = require('../utils/thumbnail');
 const { extractExif } = require('../utils/exif');
 const { ALLOWED_IMAGE_TYPES } = require('../middleware/upload');
+const sharp = require('sharp');
 const logger = require('../utils/logger');
 
 function extractDateFromFilenameOrStat(filename, filePath) {
@@ -370,6 +371,78 @@ const downloadMedia = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/media/:id/share - Ultra-fast, optimized JPEG (max 2048px) for WhatsApp, Instagram, Telegram sharing
+ */
+const serveShareMedia = asyncHandler(async (req, res) => {
+  const media = await Media.findOne({ where: { id: req.params.id, user_id: req.user.id } });
+  if (!media) throw new AppError('Media not found', 404);
+
+  const absPath = getMediaAbsPath(req.user.storage_folder, media.stored_filename);
+  if (!fs.existsSync(absPath)) throw new AppError('File not found on disk', 404);
+
+  // If video, serve directly (video streaming)
+  if (media.media_type === 'video') {
+    const stat = fs.statSync(absPath);
+    res.writeHead(200, {
+      'Content-Length': stat.size,
+      'Content-Type': media.mime_type || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=86400',
+    });
+    return fs.createReadStream(absPath).pipe(res);
+  }
+
+  // 1. Check if optimized share image already generated on disk
+  const shareJpg = getShareImageAbsPath(media.id);
+  if (fs.existsSync(shareJpg)) {
+    const stat = fs.statSync(shareJpg);
+    if (stat.size > 0) {
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': stat.size,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return fs.createReadStream(shareJpg).pipe(res);
+    }
+  }
+
+  // 2. Generate 2048px high quality JPEG optimized for mobile sharing
+  try {
+    const thumbDir = getThumbnailsDir();
+    if (!fs.existsSync(thumbDir)) {
+      fs.mkdirSync(thumbDir, { recursive: true });
+    }
+
+    await sharp(absPath, { failOnError: false, failOn: 'none' })
+      .rotate()
+      .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85, progressive: true })
+      .toFile(shareJpg);
+
+    if (fs.existsSync(shareJpg)) {
+      const stat = fs.statSync(shareJpg);
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': stat.size,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return fs.createReadStream(shareJpg).pipe(res);
+    }
+  } catch (err) {
+    logger.warn(`Failed to generate share JPEG for ${media.id}: ${err.message}`);
+  }
+
+  // 3. Fallback to original file
+  const stat = fs.statSync(absPath);
+  res.writeHead(200, {
+    'Content-Length': stat.size,
+    'Content-Type': media.mime_type || 'image/jpeg',
+    'Cache-Control': 'private, max-age=86400',
+  });
+  fs.createReadStream(absPath).pipe(res);
+});
+
+/**
  * GET /api/media/:id/thumbnail - Serve pre-cached disk thumbnail with WebP & ETag
  */
 const serveThumbnail = asyncHandler(async (req, res) => {
@@ -712,6 +785,6 @@ const generateAllThumbnails = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail,
+  uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail, serveShareMedia,
   updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting, generateAllThumbnails,
 };

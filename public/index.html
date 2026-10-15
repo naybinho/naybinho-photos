@@ -4167,17 +4167,12 @@
 
       // Proactive background pre-cache for instant sharing
       if (window.Android && typeof window.Android.preloadMediaForShare === 'function') {
-        window.Android.preloadMediaForShare(item.id, item.original_filename || item.title || '', item.media_type || 'photo');
-        if (State.filteredPhotos && index < State.filteredPhotos.length - 1) {
-          const nextItem = State.filteredPhotos[index + 1];
-          if (nextItem) {
-            setTimeout(() => {
-              if (window.Android && typeof window.Android.preloadMediaForShare === 'function') {
-                window.Android.preloadMediaForShare(nextItem.id, nextItem.original_filename || nextItem.title || '', nextItem.media_type || 'photo');
-              }
-            }, 500);
-          }
-        }
+        window.Android.preloadMediaForShare(
+          item.id,
+          item.original_filename || item.title || '',
+          item.media_type || 'photo',
+          item.mime_type || ''
+        );
       }
 
       // Format Date & Time for header
@@ -4374,7 +4369,12 @@
       try {
         // 1. If running natively in Android app:
         if (window.Android && window.Android.shareMedia) {
-          window.Android.shareMedia(item.id, item.original_filename || item.title || '', item.media_type || 'photo');
+          window.Android.shareMedia(
+            item.id,
+            item.original_filename || item.title || '',
+            item.media_type || 'photo',
+            item.mime_type || ''
+          );
           setTimeout(resetBtn, 1500);
           return;
         }

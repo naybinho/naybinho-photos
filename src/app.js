@@ -46,6 +46,7 @@ const limiter = rateLimit({
       process.env.NODE_ENV === 'development' ||
       url.includes('/tiles/') ||
       url.includes('/thumbnail') ||
+      url.includes('/share') ||
       url.includes('/file')
     );
   },

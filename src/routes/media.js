@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const {
-  uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail,
+  uploadMedia, listMedia, getMedia, serveMedia, downloadMedia, serveThumbnail, serveShareMedia,
   updateMedia, deleteMedia, bulkDelete, bulkUpdate, geocodeExisting, generateAllThumbnails,
 } = require('../controllers/mediaController');
 const { authenticate } = require('../middleware/auth');
@@ -24,6 +24,7 @@ router.post('/generate-thumbnails', generateAllThumbnails);
 router.get('/:id', getMedia);
 router.get('/:id/file', serveMedia);
 router.get('/:id/download', downloadMedia);
+router.get('/:id/share', serveShareMedia);
 router.get('/:id/thumbnail', serveThumbnail);
 router.patch('/:id', updateMedia);
 router.delete('/:id', deleteMedia);

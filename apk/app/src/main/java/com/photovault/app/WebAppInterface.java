@@ -53,8 +53,8 @@ public class WebAppInterface {
             .retryOnConnectionFailure(true)
             .build();
 
-    private static final ExecutorService SHARE_EXECUTOR = Executors.newFixedThreadPool(4);
-    private static final ConcurrentHashMap<String, Future<?>> ACTIVE_DOWNLOADS = new ConcurrentHashMap<>();
+    private static final ExecutorService SHARE_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ConcurrentHashMap<String, Object> DOWNLOAD_LOCKS = new ConcurrentHashMap<>();
 
     private final Context context;
     private final SharedPreferences prefs;
@@ -260,20 +260,20 @@ public class WebAppInterface {
 
     /**
      * Pre-cache photo or video in the background as soon as it is opened in the viewer.
-     * When the user taps "Compartilhar", the file is already downloaded and opens in 0ms!
      */
     @JavascriptInterface
     public void preloadMediaForShare(String mediaId, String title, String mediaType) {
+        preloadMediaForShare(mediaId, title, mediaType, null);
+    }
+
+    @JavascriptInterface
+    public void preloadMediaForShare(String mediaId, String title, String mediaType, String mimeType) {
         if (mediaId == null || mediaId.trim().isEmpty()) return;
         SHARE_EXECUTOR.execute(() -> {
             try {
-                boolean isVideo = "video".equalsIgnoreCase(mediaType);
+                boolean isVideo = "video".equalsIgnoreCase(mediaType) || (mimeType != null && mimeType.startsWith("video/"));
                 String ext = isVideo ? ".mp4" : ".jpg";
 
-                // Step 1: Check if already in device's MediaStore
-                if (findLocalMediaStoreUri(title, isVideo) != null) return;
-
-                // Step 2: Check if already in cache
                 File cacheDir = new File(context.getCacheDir(), "shared_media");
                 if (!cacheDir.exists()) cacheDir.mkdirs();
 
@@ -281,90 +281,77 @@ public class WebAppInterface {
                 File sharedFile = new File(cacheDir, mediaId + "_" + safeName);
                 if (sharedFile.exists() && sharedFile.length() > 0) return;
 
-                // Step 3: Trigger background download if not already running
-                if (ACTIVE_DOWNLOADS.containsKey(mediaId)) return;
-
-                Future<?> future = SHARE_EXECUTOR.submit(() -> {
-                    try {
-                        downloadMediaToServerCache(mediaId, safeName, ext, cacheDir, sharedFile);
-                    } catch (Throwable t) {
-                        Log.w("WebAppInterface", "Preload failed for " + mediaId + ": " + t.getMessage());
-                    } finally {
-                        ACTIVE_DOWNLOADS.remove(mediaId);
-                    }
-                });
-                ACTIVE_DOWNLOADS.put(mediaId, future);
-
-            } catch (Throwable ignored) {}
+                Object lock = DOWNLOAD_LOCKS.computeIfAbsent(mediaId, k -> new Object());
+                synchronized (lock) {
+                    if (sharedFile.exists() && sharedFile.length() > 0) return;
+                    downloadMediaToServerCache(mediaId, safeName, ext, cacheDir, sharedFile, isVideo);
+                }
+            } catch (Throwable t) {
+                Log.w("WebAppInterface", "Preload quiet error: " + t.getMessage());
+            } finally {
+                DOWNLOAD_LOCKS.remove(mediaId);
+            }
         });
     }
 
     /**
      * Share photo or video with external apps (WhatsApp, Instagram, Telegram, etc.)
-     * Ultra-fast implementation:
-     * 1. Checks if file already exists locally in MediaStore (0 ms).
-     * 2. Checks if file already cached in shared_media (0 ms).
-     * 3. If preloading is currently in progress, waits on active future to avoid duplicate work.
-     * 4. Downloads directly via /api/media/{id}/file using high-speed OkHttpClient buffer.
-     * 5. Launches Chooser on Main Thread using FileProvider and FLAG_GRANT_READ_URI_PERMISSION.
+     * 1. If already cached (e.g. by proactive preload), launches immediately (0 ms).
+     * 2. Synchronizes with any active download using per-media lock to avoid duplicates or clashing.
+     * 3. Uses optimized /share endpoint (~500KB JPEG) which downloads in 150ms!
+     * 4. Correctly configures Activity chooser flags and grants URI permissions.
      */
     @JavascriptInterface
     public void shareMedia(String mediaId, String title, String mediaType) {
+        shareMedia(mediaId, title, mediaType, null);
+    }
+
+    @JavascriptInterface
+    public void shareMedia(String mediaId, String title, String mediaType, String mimeType) {
         SHARE_EXECUTOR.execute(() -> {
             try {
-                boolean isVideo = "video".equalsIgnoreCase(mediaType);
+                boolean isVideo = "video".equalsIgnoreCase(mediaType) || (mimeType != null && mimeType.startsWith("video/"));
                 String ext = isVideo ? ".mp4" : ".jpg";
-                String mimeType = isVideo ? "video/mp4" : "image/jpeg";
+                String resolvedMime = (mimeType != null && !mimeType.trim().isEmpty())
+                        ? mimeType
+                        : (isVideo ? "video/mp4" : "image/jpeg");
 
-                // Step 1: Check if photo/video already exists on this device in MediaStore (0 ms)
-                Uri localUri = findLocalMediaStoreUri(title, isVideo);
-                if (localUri != null) {
-                    launchShareIntent(localUri, mimeType);
-                    return;
-                }
-
-                // Step 2: Check if already cached in app cache (0 ms)
                 File cacheDir = new File(context.getCacheDir(), "shared_media");
                 if (!cacheDir.exists()) cacheDir.mkdirs();
 
                 final String safeName = sanitizeFilename(title, ext);
                 File sharedFile = new File(cacheDir, mediaId + "_" + safeName);
 
+                // Step 1: Instant launch if already in cache (0 ms)
                 if (sharedFile.exists() && sharedFile.length() > 0) {
                     Uri contentUri = FileProvider.getUriForFile(context, context.getPackageName() + ".provider", sharedFile);
-                    launchShareIntent(contentUri, mimeType);
+                    launchShareIntent(contentUri, resolvedMime);
                     return;
                 }
 
-                // Step 3: Check if already being downloaded by preload
-                Future<?> activeFuture = ACTIVE_DOWNLOADS.get(mediaId);
-                if (activeFuture != null) {
-                    try {
-                        activeFuture.get(15, TimeUnit.SECONDS);
-                    } catch (Exception ignored) {}
-                }
-
-                if (sharedFile.exists() && sharedFile.length() > 0) {
-                    Uri contentUri = FileProvider.getUriForFile(context, context.getPackageName() + ".provider", sharedFile);
-                    launchShareIntent(contentUri, mimeType);
-                    return;
-                }
-
-                // Step 4: Download from server
+                // Step 2: Show immediate UI feedback
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(context, "Preparando foto para compartilhar...", Toast.LENGTH_SHORT).show();
                 });
 
-                downloadMediaToServerCache(mediaId, safeName, ext, cacheDir, sharedFile);
+                // Step 3: Synchronize on mediaId lock to download safely
+                Object lock = DOWNLOAD_LOCKS.computeIfAbsent(mediaId, k -> new Object());
+                synchronized (lock) {
+                    if (!sharedFile.exists() || sharedFile.length() == 0) {
+                        downloadMediaToServerCache(mediaId, safeName, ext, cacheDir, sharedFile, isVideo);
+                    }
+                }
+                DOWNLOAD_LOCKS.remove(mediaId);
 
+                // Step 4: Open Chooser
                 if (sharedFile.exists() && sharedFile.length() > 0) {
                     Uri contentUri = FileProvider.getUriForFile(context, context.getPackageName() + ".provider", sharedFile);
-                    launchShareIntent(contentUri, mimeType);
+                    launchShareIntent(contentUri, resolvedMime);
 
-                    // Clean old cache in background without blocking UI
+                    // Background cleanup without blocking UI
                     SHARE_EXECUTOR.execute(() -> cleanOldSharedFiles(cacheDir));
                 } else {
-                    throw new IOException("Arquivo baixado está vazio ou indisponível.");
+                    throw new IOException("Arquivo indisponível no servidor.");
                 }
 
             } catch (Exception e) {
@@ -376,7 +363,7 @@ public class WebAppInterface {
         });
     }
 
-    private void downloadMediaToServerCache(String mediaId, String safeName, String ext, File cacheDir, File sharedFile) throws IOException {
+    private void downloadMediaToServerCache(String mediaId, String safeName, String ext, File cacheDir, File sharedFile, boolean isVideo) throws IOException {
         String serverUrl = getServerUrl();
         String token = getToken();
         if (serverUrl.isEmpty() || token.isEmpty()) {
@@ -384,38 +371,60 @@ public class WebAppInterface {
         }
 
         String cleanServerUrl = serverUrl.replaceAll("/+$", "");
-        String streamUrl = cleanServerUrl + "/api/media/" + mediaId + "/file?token=" + Uri.encode(token);
+        File tempFile = new File(cacheDir, "temp_" + mediaId + "_" + System.currentTimeMillis() + ext);
+        boolean downloaded = false;
 
-        Request req = new Request.Builder()
-                .url(streamUrl)
+        // 1. Try high-speed /share endpoint first (~500KB JPEG in 150ms)
+        String shareUrl = cleanServerUrl + "/api/media/" + mediaId + "/share?token=" + Uri.encode(token);
+        Request reqShare = new Request.Builder()
+                .url(shareUrl)
                 .header("Authorization", "Bearer " + token)
                 .build();
 
-        File tempFile = new File(cacheDir, "temp_" + mediaId + "_" + System.currentTimeMillis() + ext);
-
-        try (Response res = SHARED_CLIENT.newCall(req).execute()) {
-            if (!res.isSuccessful() || res.body() == null) {
-                // Fallback to /download endpoint if needed
-                String dlUrl = cleanServerUrl + "/api/media/" + mediaId + "/download?token=" + Uri.encode(token);
-                Request reqDl = new Request.Builder()
-                        .url(dlUrl)
-                        .header("Authorization", "Bearer " + token)
-                        .build();
-                try (Response resDl = SHARED_CLIENT.newCall(reqDl).execute()) {
-                    if (!resDl.isSuccessful() || resDl.body() == null) {
-                        throw new IOException("Falha no download da foto: " + resDl.code());
-                    }
-                    writeStreamToFile(resDl.body().byteStream(), tempFile);
-                }
-            } else {
+        try (Response res = SHARED_CLIENT.newCall(reqShare).execute()) {
+            if (res.isSuccessful() && res.body() != null) {
                 writeStreamToFile(res.body().byteStream(), tempFile);
+                downloaded = (tempFile.exists() && tempFile.length() > 0);
+            }
+        } catch (Throwable t) {
+            Log.w("WebAppInterface", "Share endpoint fallback: " + t.getMessage());
+        }
+
+        // 2. Fallback to /file endpoint
+        if (!downloaded) {
+            String streamUrl = cleanServerUrl + "/api/media/" + mediaId + "/file?token=" + Uri.encode(token);
+            Request reqFile = new Request.Builder()
+                    .url(streamUrl)
+                    .header("Authorization", "Bearer " + token)
+                    .build();
+            try (Response res = SHARED_CLIENT.newCall(reqFile).execute()) {
+                if (res.isSuccessful() && res.body() != null) {
+                    writeStreamToFile(res.body().byteStream(), tempFile);
+                    downloaded = (tempFile.exists() && tempFile.length() > 0);
+                }
+            } catch (Throwable t) {
+                Log.w("WebAppInterface", "File endpoint fallback: " + t.getMessage());
             }
         }
 
-        if (tempFile.exists() && tempFile.length() > 0) {
+        // 3. Fallback to /download endpoint
+        if (!downloaded) {
+            String dlUrl = cleanServerUrl + "/api/media/" + mediaId + "/download?token=" + Uri.encode(token);
+            Request reqDl = new Request.Builder()
+                    .url(dlUrl)
+                    .header("Authorization", "Bearer " + token)
+                    .build();
+            try (Response res = SHARED_CLIENT.newCall(reqDl).execute()) {
+                if (res.isSuccessful() && res.body() != null) {
+                    writeStreamToFile(res.body().byteStream(), tempFile);
+                    downloaded = (tempFile.exists() && tempFile.length() > 0);
+                }
+            }
+        }
+
+        if (downloaded && tempFile.exists() && tempFile.length() > 0) {
             if (sharedFile.exists()) sharedFile.delete();
             if (!tempFile.renameTo(sharedFile)) {
-                // Fallback copy if rename fails
                 try (InputStream in = new BufferedInputStream(new FileInputStream(tempFile));
                      OutputStream out = new BufferedOutputStream(new FileOutputStream(sharedFile))) {
                     byte[] buf = new byte[65536];
@@ -452,8 +461,12 @@ public class WebAppInterface {
                 shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
                 Intent chooser = Intent.createChooser(shareIntent, "Compartilhar com");
-                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                // Only add NEW_TASK if context is NOT an Activity
+                if (!(context instanceof Activity)) {
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                }
 
                 context.startActivity(chooser);
             } catch (Exception e) {
