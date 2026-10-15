@@ -4165,6 +4165,21 @@
         container.innerHTML = `<img class="lightbox-media" src="${API.getMediaUrl(item.id, true)}" alt="${item.title || item.original_filename}">`;
       }
 
+      // Proactive background pre-cache for instant sharing
+      if (window.Android && typeof window.Android.preloadMediaForShare === 'function') {
+        window.Android.preloadMediaForShare(item.id, item.original_filename || item.title || '', item.media_type || 'photo');
+        if (State.filteredPhotos && index < State.filteredPhotos.length - 1) {
+          const nextItem = State.filteredPhotos[index + 1];
+          if (nextItem) {
+            setTimeout(() => {
+              if (window.Android && typeof window.Android.preloadMediaForShare === 'function') {
+                window.Android.preloadMediaForShare(nextItem.id, nextItem.original_filename || nextItem.title || '', nextItem.media_type || 'photo');
+              }
+            }, 500);
+          }
+        }
+      }
+
       // Format Date & Time for header
       const rawDate = item.taken_at || item.created_at || item.createdAt;
       let dateText = 'Foto';
@@ -4339,19 +4354,20 @@
       if (!item) return;
 
       const btn = document.getElementById('viewerShareBtn');
-      const span = btn ? btn.querySelector('span') : null;
-      const origText = span ? span.textContent : '';
+      const origHtml = btn ? btn.innerHTML : '';
       if (btn) {
         btn.style.opacity = '0.7';
         btn.style.pointerEvents = 'none';
-        if (span) span.textContent = 'Preparando...';
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i>';
+        if (window.lucide) lucide.createIcons();
       }
 
       const resetBtn = () => {
         if (btn) {
           btn.style.opacity = '1';
           btn.style.pointerEvents = 'auto';
-          if (span && origText) span.textContent = origText;
+          btn.innerHTML = origHtml;
+          if (window.lucide) lucide.createIcons();
         }
       };
 
@@ -4359,7 +4375,7 @@
         // 1. If running natively in Android app:
         if (window.Android && window.Android.shareMedia) {
           window.Android.shareMedia(item.id, item.original_filename || item.title || '', item.media_type || 'photo');
-          setTimeout(resetBtn, 1200);
+          setTimeout(resetBtn, 1500);
           return;
         }
 

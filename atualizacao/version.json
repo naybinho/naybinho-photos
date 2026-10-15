@@ -1,8 +1,8 @@
 {
-  "versionCode": 12,
-  "versionName": "1.0.11",
-  "notes": "Compartilhamento ultra-rápido de fotos e vídeos para WhatsApp, Instagram e Telegram sem lentidão ou espera; cache local inteligente e otimização de stream.",
+  "versionCode": 13,
+  "versionName": "1.0.12",
+  "notes": "Pré-carregamento proativo de compartilhamento: as fotos agora abrem imediatamente nos apps (WhatsApp, Instagram, etc.) mesmo na primeira vez, com prefetch em segundo plano e sincronização nativa na thread principal.",
   "filename": "NayBinho-Photos.apk",
-  "fileSize": 7003849,
-  "updatedAt": "2026-10-15T01:10:00.000Z"
+  "fileSize": 7005581,
+  "updatedAt": "2026-10-15T12:05:00.000Z"
 }
