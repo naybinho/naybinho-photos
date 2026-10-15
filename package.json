@@ -1,6 +1,6 @@
 {
   "name": "naybinho-photos",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "NayBinho Photos — Gestor de Fotos & Vídeos de Alta Performance",
   "main": "src/server.js",
   "scripts": {

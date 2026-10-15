@@ -3511,7 +3511,8 @@
     State.photosHasMore = true;
     State.photosLoading = false;
     State.photosFilter = 'all';
-    const PHOTOS_PAGE_SIZE = 100;
+    State.totalPhotosCount = 0;
+    const PHOTOS_PAGE_SIZE = 150;
 
     let photosIntersectionObserver = null;
     function observeInfiniteLoader(loaderEl) {
@@ -3519,15 +3520,15 @@
       if (photosIntersectionObserver) {
         photosIntersectionObserver.disconnect();
       }
-      const scrollRoot = document.querySelector('.main-area') || null;
+      // root: null uses the device viewport directly for 100% reliable detection on Android WebView
       photosIntersectionObserver = new IntersectionObserver((entries) => {
         const entry = entries[0];
         if (entry && entry.isIntersecting) {
           loadMorePhotos();
         }
       }, {
-        root: scrollRoot,
-        rootMargin: '1000px',
+        root: null,
+        rootMargin: '1200px',
         threshold: 0
       });
       photosIntersectionObserver.observe(loaderEl);
@@ -3535,8 +3536,10 @@
 
     async function loadMorePhotos() {
       if (!State.photosHasMore || State.photosLoading) return;
+      const lbModal = document.getElementById('lightboxModal');
+      const isLightboxActive = lbModal && lbModal.classList.contains('active');
       const currentView = document.querySelector('.content-view.active');
-      if (!currentView || currentView.id !== 'view-photos') return;
+      if (!isLightboxActive && (!currentView || currentView.id !== 'view-photos')) return;
 
       const loader = document.getElementById('photosInfiniteLoader');
       if (loader) {
@@ -3581,6 +3584,7 @@
         const res = await API.req(endpoint);
         const newItems = res.media || [];
         const totalCount = res.total || 0;
+        State.totalPhotosCount = totalCount;
 
         if (append) {
           State.photos = State.photos.concat(newItems);
@@ -3593,13 +3597,19 @@
           State.photosHasMore = false;
         }
 
-        const countType = filter === 'photo' ? 'foto(s)' : (filter === 'video' ? 'vídeo(s)' : 'item(s)');
+        const countType = filter === 'photo' ? 'fotos' : (filter === 'video' ? 'vídeos' : 'itens');
         const countEl = document.getElementById('photosCountText');
         if (countEl) {
+          const formattedTotal = totalCount.toLocaleString('pt-BR');
+          const formattedLoaded = State.photos.length.toLocaleString('pt-BR');
           if (State.photos.length < totalCount) {
-            countEl.textContent = `Exibindo ${State.photos.length} de ${totalCount} ${countType}`;
+            countEl.innerHTML = `Exibindo <b style="color: var(--text-main);">${formattedLoaded}</b> de <b>${formattedTotal}</b> ${countType} <span style="font-size: 0.75rem; opacity: 0.85; margin-left: 6px; cursor: pointer; color: var(--accent, #4285f4); text-decoration: underline;">(toque para carregar mais)</span>`;
+            countEl.style.cursor = 'pointer';
+            countEl.onclick = () => loadMorePhotos();
           } else {
-            countEl.textContent = `${totalCount} ${countType}`;
+            countEl.textContent = `${formattedTotal} ${countType}`;
+            countEl.style.cursor = 'default';
+            countEl.onclick = null;
           }
         }
 
@@ -3608,7 +3618,9 @@
 
         renderPhotoCards(grid, State.photos);
 
-        if (mainArea && append && prevScroll > 0) {
+        const lbModal = document.getElementById('lightboxModal');
+        const isLightboxActive = lbModal && lbModal.classList.contains('active');
+        if (mainArea && append && prevScroll > 0 && !isLightboxActive) {
           mainArea.scrollTop = prevScroll;
         }
 
@@ -3625,7 +3637,7 @@
           loader.innerHTML = `
             <div style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-color); border-radius: 99px; color: var(--text-muted); font-size: 0.85rem; transition: all 0.2s ease;">
               <span class="spinner-small" style="display: none; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent, #4285f4); border-radius: 50%; animation: gp-spin 0.8s linear infinite;"></span>
-              <span class="loader-text">Role para carregar mais ou clique aqui (${State.photos.length} de ${totalCount || '...'})</span>
+              <span class="loader-text">Role para carregar mais ou clique aqui (${State.photos.length.toLocaleString('pt-BR')} de ${totalCount.toLocaleString('pt-BR')})</span>
             </div>
           `;
           loader.onclick = () => loadMorePhotos();
@@ -3636,7 +3648,7 @@
           const endDiv = document.createElement('div');
           endDiv.id = 'photosInfiniteEnd';
           endDiv.style.cssText = 'padding: 32px 16px 60px; text-align: center; color: var(--text-muted); font-size: 0.85rem; width: 100%;';
-          endDiv.innerHTML = `<span>✨ Todas as fotos e vídeos foram carregados (${State.photos.length} itens)</span>`;
+          endDiv.innerHTML = `<span>✨ Todas as fotos e vídeos foram carregados (${State.photos.length.toLocaleString('pt-BR')} itens)</span>`;
           grid.appendChild(endDiv);
         }
       } catch (err) {
@@ -3657,6 +3669,9 @@
 
       const checkScroll = () => {
         if (!State.photosHasMore || State.photosLoading) return;
+        const lbModal = document.getElementById('lightboxModal');
+        if (lbModal && lbModal.classList.contains('active')) return;
+
         const currentView = document.querySelector('.content-view.active');
         if (!currentView || currentView.id !== 'view-photos') return;
 
@@ -3665,7 +3680,7 @@
           const scrollHeight = mainEl.scrollHeight;
           const scrollTop = mainEl.scrollTop;
           const clientHeight = mainEl.clientHeight;
-          if (scrollHeight - scrollTop - clientHeight < 1000) {
+          if (scrollHeight - scrollTop - clientHeight < 1500) {
             loadMorePhotos();
             return;
           }
@@ -3674,7 +3689,7 @@
         const winScrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
         const winScrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
         const winClientHeight = window.innerHeight;
-        if (winScrollHeight - winScrollTop - winClientHeight < 1000) {
+        if (winScrollHeight - winScrollTop - winClientHeight < 1500) {
           loadMorePhotos();
         }
       };
@@ -3682,8 +3697,10 @@
       const mainEl = document.querySelector('.main-area');
       if (mainEl) {
         mainEl.addEventListener('scroll', checkScroll, { passive: true });
+        mainEl.addEventListener('touchmove', checkScroll, { passive: true });
       }
       window.addEventListener('scroll', checkScroll, { passive: true });
+      window.addEventListener('touchmove', checkScroll, { passive: true });
       document.addEventListener('scroll', checkScroll, { passive: true });
     }
 
@@ -4131,6 +4148,34 @@
       }).catch(err => console.error('Erro ao abrir foto:', err));
     }
 
+    async function lightboxNext() {
+      if (!State.filteredPhotos || !State.filteredPhotos.length) return;
+      const curIdx = State.lightboxIndex;
+      if (curIdx < State.filteredPhotos.length - 1) {
+        openLightbox(curIdx + 1);
+      } else if (State.photosHasMore) {
+        const nextBtn = document.getElementById('lightboxNextBtn');
+        if (nextBtn) {
+          nextBtn.style.opacity = '0.7';
+          nextBtn.innerHTML = '<span class="spinner-small" style="display:inline-block; width:16px; height:16px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:gp-spin 0.8s linear infinite;"></span>';
+        }
+        await loadMorePhotos();
+        if (nextBtn) {
+          nextBtn.innerHTML = '<i data-lucide="chevron-right" style="width: 24px; height: 24px;"></i>';
+          if (window.lucide) lucide.createIcons();
+        }
+        if (State.filteredPhotos && curIdx + 1 < State.filteredPhotos.length) {
+          openLightbox(curIdx + 1);
+        }
+      }
+    }
+
+    function lightboxPrev() {
+      if (State.lightboxIndex > 0) {
+        openLightbox(State.lightboxIndex - 1);
+      }
+    }
+
     function openLightbox(index) {
       State.lightboxIndex = index;
       const item = State.filteredPhotos ? State.filteredPhotos[index] : null;
@@ -4145,18 +4190,23 @@
       document.getElementById('lightboxPrevBtn')?.classList.remove('controls-hidden');
       document.getElementById('lightboxNextBtn')?.classList.remove('controls-hidden');
 
-      // Update Prev / Next button opacity & clickability
+      // Update Prev / Next button opacity & clickability (infinite forward if more exist on server)
       const prevBtn = document.getElementById('lightboxPrevBtn');
       const nextBtn = document.getElementById('lightboxNextBtn');
+      const hasPrev = index > 0;
+      const hasNext = (State.filteredPhotos && index < State.filteredPhotos.length - 1) || State.photosHasMore;
       if (prevBtn) {
-        const hasPrev = index > 0;
         prevBtn.style.opacity = hasPrev ? '1' : '0.25';
         prevBtn.style.pointerEvents = hasPrev ? 'auto' : 'none';
       }
       if (nextBtn) {
-        const hasNext = State.filteredPhotos && index < State.filteredPhotos.length - 1;
         nextBtn.style.opacity = hasNext ? '1' : '0.25';
         nextBtn.style.pointerEvents = hasNext ? 'auto' : 'none';
+      }
+
+      // Proactively load next batch from server if within 15 photos of the end of current list
+      if (State.photosHasMore && !State.photosLoading && index >= (State.filteredPhotos.length - 15)) {
+        loadMorePhotos();
       }
 
       if (item.media_type === 'video') {
@@ -4165,17 +4215,38 @@
         container.innerHTML = `<img class="lightbox-media" src="${API.getMediaUrl(item.id, true)}" alt="${item.title || item.original_filename}">`;
       }
 
-      // Proactive background pre-cache for instant sharing
+      // Proactive background pre-cache for instant sharing (Current, Next, and Previous photos!)
       if (window.Android && typeof window.Android.preloadMediaForShare === 'function') {
+        // 1. Current photo
         window.Android.preloadMediaForShare(
           item.id,
           item.original_filename || item.title || '',
           item.media_type || 'photo',
           item.mime_type || ''
         );
+        // 2. Next photo (makes sharing 0ms when user advances!)
+        const nextItem = State.filteredPhotos ? State.filteredPhotos[index + 1] : null;
+        if (nextItem) {
+          window.Android.preloadMediaForShare(
+            nextItem.id,
+            nextItem.original_filename || nextItem.title || '',
+            nextItem.media_type || 'photo',
+            nextItem.mime_type || ''
+          );
+        }
+        // 3. Previous photo
+        const prevItem = State.filteredPhotos ? State.filteredPhotos[index - 1] : null;
+        if (prevItem) {
+          window.Android.preloadMediaForShare(
+            prevItem.id,
+            prevItem.original_filename || prevItem.title || '',
+            prevItem.media_type || 'photo',
+            prevItem.mime_type || ''
+          );
+        }
       }
 
-      // Format Date & Time for header
+      // Format Date & Time and show position counter for header
       const rawDate = item.taken_at || item.created_at || item.createdAt;
       let dateText = 'Foto';
       let timeText = '';
@@ -4184,8 +4255,13 @@
         dateText = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
         timeText = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       }
+      const totalCount = State.totalPhotosCount || (State.filteredPhotos ? State.filteredPhotos.length : 0);
+      const countSuffix = totalCount ? ` • ${index + 1} de ${totalCount.toLocaleString('pt-BR')}` : ` • ${index + 1}`;
+
       if (document.getElementById('viewerHeaderDate')) document.getElementById('viewerHeaderDate').textContent = dateText;
-      if (document.getElementById('viewerHeaderTime')) document.getElementById('viewerHeaderTime').textContent = timeText;
+      if (document.getElementById('viewerHeaderTime')) {
+        document.getElementById('viewerHeaderTime').textContent = timeText ? `${timeText}${countSuffix}` : `${index + 1} de ${totalCount.toLocaleString('pt-BR')}`;
+      }
 
       // Update Info Sheet fields
       if (document.getElementById('lightboxTitle')) document.getElementById('lightboxTitle').textContent = item.title || item.original_filename;
@@ -5156,12 +5232,8 @@
 
       // Google Photos Immersive Viewer Controls & Actions
       document.getElementById('lightboxCloseBtn')?.addEventListener('click', closeLightbox);
-      document.getElementById('lightboxPrevBtn')?.addEventListener('click', () => {
-        if (State.lightboxIndex > 0) openLightbox(State.lightboxIndex - 1);
-      });
-      document.getElementById('lightboxNextBtn')?.addEventListener('click', () => {
-        if (State.lightboxIndex < State.filteredPhotos.length - 1) openLightbox(State.lightboxIndex + 1);
-      });
+      document.getElementById('lightboxPrevBtn')?.addEventListener('click', lightboxPrev);
+      document.getElementById('lightboxNextBtn')?.addEventListener('click', lightboxNext);
 
       // Share button (WhatsApp, Instagram, Telegram, etc.)
       document.getElementById('viewerShareBtn')?.addEventListener('click', shareCurrentPhoto);
@@ -5183,7 +5255,7 @@
         }
       });
 
-      // Mobile Touch Swiping
+      // Mobile Touch Swiping (with infinite batch advancement!)
       let touchStartX = 0;
       const mediaBox = document.getElementById('lightboxMediaContainer');
       if (mediaBox) {
@@ -5192,11 +5264,11 @@
         }, { passive: true });
         mediaBox.addEventListener('touchend', (e) => {
           const diff = e.changedTouches[0].screenX - touchStartX;
-          if (Math.abs(diff) > 50) {
-            if (diff < 0 && State.lightboxIndex < State.filteredPhotos.length - 1) {
-              openLightbox(State.lightboxIndex + 1);
-            } else if (diff > 0 && State.lightboxIndex > 0) {
-              openLightbox(State.lightboxIndex - 1);
+          if (Math.abs(diff) > 40) {
+            if (diff < 0) {
+              lightboxNext();
+            } else if (diff > 0) {
+              lightboxPrev();
             }
           }
         }, { passive: true });
@@ -5205,8 +5277,8 @@
       document.addEventListener('keydown', (e) => {
         if (!document.getElementById('lightboxModal').classList.contains('active')) return;
         if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft' && State.lightboxIndex > 0) openLightbox(State.lightboxIndex - 1);
-        if (e.key === 'ArrowRight' && State.lightboxIndex < State.filteredPhotos.length - 1) openLightbox(State.lightboxIndex + 1);
+        if (e.key === 'ArrowLeft') lightboxPrev();
+        if (e.key === 'ArrowRight') lightboxNext();
         if (e.key === 'Delete' || e.key === 'Backspace') deleteCurrentPhoto();
       });
 

@@ -1,8 +1,8 @@
 {
-  "versionCode": 14,
-  "versionName": "1.0.13",
-  "notes": "Compartilhamento definitivo ultra-rápido: novo endpoint /share com JPEG otimizado 2048px de ~500KB (baixa em 150ms sem travar), resolução de concorrência com bloqueios por mídia sem deadlocks e correção de flags de inicialização para o Android 14/15.",
+  "versionCode": 15,
+  "versionName": "1.0.14",
+  "notes": "Navegação e compartilhamento infinito: rolagem contínua confiável em tela cheia com IntersectionObserver no viewport do Android, avanço automático no visualizador além do lote carregado com busca contínua no servidor e pré-carregamento dinâmico em cache da foto atual, anterior e próxima para compartilhamento instantâneo em todas as 27.000+ fotos.",
   "filename": "NayBinho-Photos.apk",
   "fileSize": 7006033,
-  "updatedAt": "2026-10-15T12:50:00.000Z"
+  "updatedAt": "2026-10-15T13:25:00.000Z"
 }
