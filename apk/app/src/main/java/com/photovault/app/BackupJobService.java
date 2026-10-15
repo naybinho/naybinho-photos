@@ -31,79 +31,90 @@ public class BackupJobService extends JobService {
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        Log.d(TAG, "onStartJob triggered (jobId=" + params.getJobId() + ")");
+        try {
+            Log.d(TAG, "onStartJob triggered (jobId=" + (params != null ? params.getJobId() : -1) + ")");
 
-        SharedPreferences mainPrefs = getSharedPreferences("photovault_prefs", Context.MODE_PRIVATE);
-        String serverUrl = mainPrefs.getString("server_url", "");
-        String token = mainPrefs.getString("auth_token", "");
+            SharedPreferences mainPrefs = getSharedPreferences("photovault_prefs", Context.MODE_PRIVATE);
+            String serverUrl = mainPrefs.getString("server_url", "");
+            String token = mainPrefs.getString("auth_token", "");
 
-        AutoBackupManager manager = AutoBackupManager.getInstance(this);
+            AutoBackupManager manager = AutoBackupManager.getInstance(this);
 
-        if (!manager.isAutoBackupEnabled() || serverUrl.isEmpty() || token.isEmpty()) {
-            Log.d(TAG, "Auto backup disabled or no server credentials. Stopping job.");
-            jobFinished(params, false);
-            return false;
-        }
-
-        if (manager.isRunning()) {
-            Log.d(TAG, "AutoBackupManager already running. Skipping job run.");
-            jobFinished(params, false);
-            return false;
-        }
-
-        workerThread = new Thread(() -> {
-            try {
-                List<AutoBackupManager.LocalMediaItem> pending = manager.scanLocalMedia(false);
-                if (pending != null && !pending.isEmpty()) {
-                    Log.d(TAG, "Background backup starting for " + pending.size() + " items while app is closed.");
-                    showNotification(pending.size(), 0);
-
-                    manager.setProgressCallback(new AutoBackupManager.BackupProgressCallback() {
-                        @Override
-                        public void onProgress(int current, int total, String filename) {
-                            showNotification(total, current);
-                        }
-
-                        @Override
-                        public void onCompleted(int uploaded, int failed, long freedBytes) {
-                            hideNotification();
-                        }
-
-                        @Override
-                        public void onError(String error) {
-                            hideNotification();
-                        }
-                    });
-
-                    boolean deleteAfter = manager.isDeleteAfterUploadEnabled();
-                    manager.performBackupSync(serverUrl, token, deleteAfter);
-                } else {
-                    Log.d(TAG, "No pending items to backup.");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error in background backup job: " + e.getMessage(), e);
-            } finally {
-                hideNotification();
-                // If content trigger job fired, re-register it for the next photo capture
-                if (params.getJobId() == AutoBackupManager.JOB_ID_CONTENT_TRIGGER) {
-                    AutoBackupManager.scheduleContentTriggerJob(getApplicationContext());
-                }
+            if (!manager.isAutoBackupEnabled() || serverUrl.isEmpty() || token.isEmpty()) {
+                Log.d(TAG, "Auto backup disabled or no server credentials. Stopping job.");
                 jobFinished(params, false);
+                return false;
             }
-        });
-        workerThread.start();
-        return true; // Asynchronous work running
+
+            if (manager.isRunning()) {
+                Log.d(TAG, "AutoBackupManager already running. Skipping job run.");
+                jobFinished(params, false);
+                return false;
+            }
+
+            workerThread = new Thread(() -> {
+                try {
+                    List<AutoBackupManager.LocalMediaItem> pending = manager.scanLocalMedia(false);
+                    if (pending != null && !pending.isEmpty()) {
+                        Log.d(TAG, "Background backup starting for " + pending.size() + " items while app is closed.");
+                        showNotification(pending.size(), 0);
+
+                        manager.setProgressCallback(new AutoBackupManager.BackupProgressCallback() {
+                            @Override
+                            public void onProgress(int current, int total, String filename) {
+                                showNotification(total, current);
+                            }
+
+                            @Override
+                            public void onCompleted(int uploaded, int failed, long freedBytes) {
+                                hideNotification();
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                hideNotification();
+                            }
+                        });
+
+                        boolean deleteAfter = manager.isDeleteAfterUploadEnabled();
+                        manager.performBackupSync(serverUrl, token, deleteAfter);
+                    } else {
+                        Log.d(TAG, "No pending items to backup.");
+                    }
+                } catch (Throwable e) {
+                    Log.e(TAG, "Error in background backup job: " + e.getMessage(), e);
+                } finally {
+                    hideNotification();
+                    // If content trigger job fired, re-register it for the next photo capture safely
+                    try {
+                        if (params != null && params.getJobId() == AutoBackupManager.JOB_ID_CONTENT_TRIGGER) {
+                            AutoBackupManager.scheduleContentTriggerJob(getApplicationContext());
+                        }
+                    } catch (Throwable ignored) {}
+                    try {
+                        jobFinished(params, false);
+                    } catch (Throwable ignored) {}
+                }
+            });
+            workerThread.start();
+            return true; // Asynchronous work running
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in onStartJob: " + t.getMessage(), t);
+            return false;
+        }
     }
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        Log.d(TAG, "onStopJob called. Cancelling background backup.");
-        AutoBackupManager.getInstance(this).stopBackup();
-        if (workerThread != null) {
-            workerThread.interrupt();
-        }
-        hideNotification();
-        return true; // Reschedule if aborted
+        try {
+            Log.d(TAG, "onStopJob called. Cancelling background backup.");
+            AutoBackupManager.getInstance(this).stopBackup();
+            if (workerThread != null) {
+                workerThread.interrupt();
+            }
+            hideNotification();
+        } catch (Throwable ignored) {}
+        return false; // Do not aggressively reschedule to avoid crash loops
     }
 
     private void showNotification(int total, int current) {

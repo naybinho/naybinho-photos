@@ -422,16 +422,12 @@ public class MainActivity extends AppCompatActivity {
         finish();
     }
 
-    @Override
-    public void onBackPressed() {
-        handleBackAction();
-    }
-
     private void handleBackAction() {
-        if (layoutError != null && layoutError.getVisibility() == View.VISIBLE) {
-            finish();
-            return;
-        }
+        try {
+            if (layoutError != null && layoutError.getVisibility() == View.VISIBLE) {
+                finish();
+                return;
+            }
 
         if (webView != null) {
             webView.evaluateJavascript(
@@ -469,5 +465,8 @@ public class MainActivity extends AppCompatActivity {
         } else {
             finish();
         }
+    } catch (Throwable t) {
+        finish();
     }
+}
 }

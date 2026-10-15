@@ -1,8 +1,8 @@
 {
-  "versionCode": 10,
-  "versionName": "1.0.9",
-  "notes": "Otimizações de performance, retorno automático da foto para a galeria e saída do app com 3 toques no botão voltar.",
+  "versionCode": 11,
+  "versionName": "1.0.10",
+  "notes": "Compatibilidade total com Android 15 (One UI 7), atualização de bibliotecas Jetpack Activity e tratamento global contra falhas contínuas.",
   "filename": "NayBinho-Photos.apk",
-  "fileSize": 6882834,
-  "updatedAt": "2026-10-14T23:30:00.000Z"
+  "fileSize": 7003405,
+  "updatedAt": "2026-10-15T00:43:00.000Z"
 }

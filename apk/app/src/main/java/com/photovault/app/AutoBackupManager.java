@@ -104,7 +104,7 @@ public class AutoBackupManager {
                 js.cancel(JOB_ID_CONTENT_TRIGGER);
                 Log.d(TAG, "Cancelled all background backup jobs");
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "Error cancelling background jobs: " + e.getMessage());
         }
     }
@@ -122,7 +122,7 @@ public class AutoBackupManager {
 
             js.schedule(builder.build());
             Log.d(TAG, "Scheduled periodic background backup job (every 15 min)");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "Error scheduling periodic backup job: " + e.getMessage());
         }
     }
@@ -152,7 +152,7 @@ public class AutoBackupManager {
 
             js.schedule(builder.build());
             Log.d(TAG, "Scheduled content trigger backup job for new camera photos/videos");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.e(TAG, "Error scheduling content trigger job: " + e.getMessage());
         }
     }

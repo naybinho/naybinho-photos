@@ -14,16 +14,20 @@ public class BootReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null) return;
-        String action = intent.getAction();
-        Log.d(TAG, "onReceive action: " + action);
+        try {
+            if (intent == null) return;
+            String action = intent.getAction();
+            Log.d(TAG, "onReceive action: " + action);
 
-        if (Intent.ACTION_BOOT_COMPLETED.equals(action) ||
-            Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
-            AutoBackupManager manager = AutoBackupManager.getInstance(context);
-            if (manager.isAutoBackupEnabled()) {
-                AutoBackupManager.scheduleAllBackgroundJobs(context);
+            if (Intent.ACTION_BOOT_COMPLETED.equals(action) ||
+                Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
+                AutoBackupManager manager = AutoBackupManager.getInstance(context);
+                if (manager.isAutoBackupEnabled()) {
+                    AutoBackupManager.scheduleAllBackgroundJobs(context);
+                }
             }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in BootReceiver: " + t.getMessage(), t);
         }
     }
 }
